@@ -128,11 +128,20 @@ export interface TurnEvent {
   detail?: string;
 }
 
+export interface AgentReasoning {
+  thinking: string;     // The AI's internal reasoning
+  strategy: string;     // Short strategy summary (1 line)
+  confidence: number;   // 0.0 - 1.0
+  model?: string;       // Which LLM made this decision
+}
+
 export interface TurnRecord {
   turnNumber: number;
   roundNumber: number;
   actionA: Action;
   actionB: Action;
+  reasoningA?: AgentReasoning;
+  reasoningB?: AgentReasoning;
   events: TurnEvent[];
   stateHash: string;
 }
@@ -171,3 +180,11 @@ export interface Replay {
 // === Agent Interface ===
 
 export type DecideActionFn = (state: GameState) => Action;
+
+/** Async version that returns reasoning alongside the action */
+export interface AgentDecision {
+  action: Action;
+  reasoning: AgentReasoning;
+}
+
+export type DecideActionAsyncFn = (state: GameState) => Promise<AgentDecision>;

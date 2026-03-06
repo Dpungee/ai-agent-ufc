@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Agent UFC — Live Match Viewer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700;800&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', sans-serif; background: #08080e; color: #e0e0e8; min-height: 100vh; }
+  .header { background: linear-gradient(180deg, #111118 0%, #08080e 100%); border-bottom: 1px solid #1a1a28; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .logo { font-size: 1.2rem; font-weight: 900; background: linear-gradient(135deg, #ff4444, #ff8800); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .engine-badge { font-size: 0.7rem; padding: 4px 10px; background: rgba(255,255,255,0.04); border: 1px solid #1a1a28; border-radius: 6px; color: #555; font-family: 'JetBrains Mono', monospace; }
+  .fight-selector { display: flex; gap: 8px; padding: 16px 24px; background: #0a0a12; border-bottom: 1px solid #1a1a28; overflow-x: auto; }
+  .fight-tab { padding: 10px 18px; border-radius: 10px; cursor: pointer; font-size: 0.8rem; font-weight: 600; background: #111118; border: 1px solid #1a1a28; color: #666; white-space: nowrap; transition: all 0.2s; }
+  .fight-tab:hover { border-color: #2a2a3a; color: #999; }
+  .fight-tab.active { background: rgba(255,68,68,0.08); border-color: rgba(255,68,68,0.3); color: #ff6666; }
+  .arena-container { max-width: 900px; margin: 0 auto; padding: 24px; }
+  .matchup-header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 20px; margin-bottom: 24px; }
+  .fighter-info { display: flex; flex-direction: column; gap: 4px; }
+  .fighter-info.right { text-align: right; align-items: flex-end; }
+  .fighter-name { font-size: 1.6rem; font-weight: 900; letter-spacing: -1px; }
+  .fighter-name.red { color: #ff4444; }
+  .fighter-name.blue { color: #4488ff; }
+  .fighter-style-tag { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.5px; color: #555; font-weight: 600; }
+  .round-info { text-align: center; }
+  .round-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 2px; color: #444; font-weight: 600; }
+  .round-num { font-size: 2rem; font-weight: 900; font-family: 'JetBrains Mono', monospace; color: #fff; }
+  .hp-section { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .hp-bar-container { background: #111118; border-radius: 12px; padding: 14px 18px; border: 1px solid #1a1a28; }
+  .hp-bar-label { display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .hp-text { font-size: 0.7rem; color: #555; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+  .hp-value { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; font-weight: 700; }
+  .hp-bar-track { height: 10px; background: #1a1a28; border-radius: 5px; overflow: hidden; }
+  .hp-bar-fill { height: 100%; border-radius: 5px; transition: width 0.5s ease, background 0.3s; }
+  .hp-bar-fill.red { background: linear-gradient(90deg, #ff2222, #ff6644); }
+  .hp-bar-fill.blue { background: linear-gradient(90deg, #2244ff, #4488ff); }
+  .hp-bar-fill.critical { background: linear-gradient(90deg, #ff0000, #ff3333); animation: pulse-bar 0.5s infinite alternate; }
+  @keyframes pulse-bar { from { opacity: 1; } to { opacity: 0.6; } }
+
+  /* Arena */
+  .arena-ring { position: relative; height: 320px; background: linear-gradient(180deg, #0a0a14 0%, #0e0e1a 50%, #0c0c16 100%); border: 2px solid #1a1a28; border-radius: 16px; margin-bottom: 20px; overflow: hidden; }
+  .arena-floor { position: absolute; bottom: 0; left: 0; right: 0; height: 60px; background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.005)); border-top: 1px solid rgba(255,255,255,0.03); }
+  .arena-ring::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 80%, rgba(255,255,255,0.015) 0%, transparent 60%); }
+
+  /* Stick figure container */
+  .fighter-container { position: absolute; bottom: 60px; width: 120px; height: 180px; transition: left 0.4s ease; z-index: 2; }
+  .fighter-container.left { left: 22%; }
+  .fighter-container.right { left: 58%; }
+
+  /* SVG stick figure */
+  .fighter-svg { width: 120px; height: 180px; }
+  .fighter-svg line, .fighter-svg circle { transition: all 0.25s ease; }
+
+  /* Damage number popup */
+  .dmg-popup { position: absolute; font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 1.4rem; pointer-events: none; z-index: 5; animation: dmg-float 0.8s ease forwards; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+  @keyframes dmg-float { 0% { opacity: 1; transform: translateY(0) scale(1.2); } 60% { opacity: 1; transform: translateY(-40px) scale(1); } 100% { opacity: 0; transform: translateY(-60px) scale(0.8); } }
+
+  /* Impact effects */
+  .impact-burst { position: absolute; pointer-events: none; z-index: 4; }
+  .impact-burst svg { animation: burst 0.4s ease forwards; }
+  @keyframes burst { 0% { opacity: 1; transform: scale(0.3); } 50% { opacity: 1; transform: scale(1.2); } 100% { opacity: 0; transform: scale(1.5); } }
+
+  /* Miss whoosh */
+  .miss-text { position: absolute; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; font-weight: 700; color: #444; pointer-events: none; z-index: 5; animation: miss-fade 0.6s ease forwards; }
+  @keyframes miss-fade { 0% { opacity: 0.8; transform: translateX(0); } 100% { opacity: 0; transform: translateX(30px); } }
+
+  /* Block shield */
+  .block-flash { position: absolute; width: 50px; height: 50px; border-radius: 50%; border: 3px solid rgba(68,136,255,0.6); background: radial-gradient(circle, rgba(68,136,255,0.15), transparent); pointer-events: none; z-index: 4; animation: shield-pop 0.4s ease forwards; }
+  @keyframes shield-pop { 0% { opacity: 1; transform: scale(0.5); } 50% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0; transform: scale(1.3); } }
+
+  /* KO text */
+  .ko-flash { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 4rem; font-weight: 900; letter-spacing: 4px; z-index: 6; animation: ko-slam 0.6s ease forwards; }
+  @keyframes ko-slam { 0% { opacity: 0; transform: translate(-50%, -50%) scale(3); } 30% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 70% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); } 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+
+  /* Result overlay */
+  .result-overlay { display: none; position: absolute; inset: 0; background: rgba(8,8,14,0.92); z-index: 10; border-radius: 14px; align-items: center; justify-content: center; flex-direction: column; gap: 8px; animation: fade-in 0.5s ease; }
+  .result-overlay.show { display: flex; }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  .result-text { font-size: 2rem; font-weight: 900; letter-spacing: -1px; }
+  .result-method { font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; font-weight: 700; padding: 6px 16px; border-radius: 8px; }
+  .result-method.ko { background: rgba(255,68,68,0.15); color: #ff5555; }
+  .result-method.decision { background: rgba(68,136,255,0.15); color: #4488ff; }
+  .result-method.dq { background: rgba(255,204,0,0.15); color: #ffcc00; }
+  .result-method.draw { background: rgba(128,128,128,0.15); color: #888; }
+
+  .action-display { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: center; margin-bottom: 20px; }
+  .action-bubble { padding: 12px 18px; border-radius: 12px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; text-align: center; transition: all 0.3s; min-height: 46px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .action-bubble.red { background: rgba(255,68,68,0.08); border: 1px solid rgba(255,68,68,0.2); color: #ff6666; }
+  .action-bubble.blue { background: rgba(68,136,255,0.08); border: 1px solid rgba(68,136,255,0.2); color: #6699ff; }
+  .turn-counter { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: #444; text-align: center; font-weight: 600; }
+  .turn-counter .num { font-size: 1.4rem; color: #fff; font-weight: 800; }
+
+  /* === AI REASONING PANEL === */
+  .reasoning-section { margin-bottom: 20px; }
+  .reasoning-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .reasoning-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 2px; color: #555; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .reasoning-title .ai-dot { width: 6px; height: 6px; border-radius: 50%; background: #00cc66; animation: ai-pulse 1.5s ease infinite; }
+  @keyframes ai-pulse { 0%,100% { opacity: 1; box-shadow: 0 0 4px #00cc66; } 50% { opacity: 0.4; box-shadow: 0 0 8px #00cc66; } }
+  .reasoning-toggle { font-size: 0.7rem; color: #444; cursor: pointer; padding: 4px 10px; border: 1px solid #1a1a28; border-radius: 6px; background: transparent; font-family: 'Inter', sans-serif; transition: all 0.2s; }
+  .reasoning-toggle:hover { border-color: #2a2a3a; color: #888; }
+  .reasoning-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .reasoning-card { background: #0c0c16; border: 1px solid #1a1a28; border-radius: 12px; padding: 16px; transition: all 0.4s ease; overflow: hidden; }
+  .reasoning-card.red { border-left: 3px solid rgba(255,68,68,0.4); }
+  .reasoning-card.blue { border-left: 3px solid rgba(68,136,255,0.4); }
+  .reasoning-card.active { border-color: rgba(255,255,255,0.08); }
+  .reasoning-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .reasoning-fighter-name { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+  .reasoning-fighter-name.red { color: #ff6666; }
+  .reasoning-fighter-name.blue { color: #6699ff; }
+  .reasoning-model-tag { font-size: 0.6rem; padding: 2px 8px; background: rgba(255,255,255,0.04); border: 1px solid #1a1a28; border-radius: 4px; color: #444; font-family: 'JetBrains Mono', monospace; }
+  .reasoning-thinking { font-size: 0.78rem; line-height: 1.5; color: #999; margin-bottom: 10px; font-style: italic; min-height: 36px; }
+  .reasoning-thinking.empty { color: #333; }
+  .reasoning-strategy { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .reasoning-strategy-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 1px; color: #444; font-weight: 600; white-space: nowrap; }
+  .reasoning-strategy-text { font-size: 0.75rem; font-weight: 600; color: #ccc; font-family: 'JetBrains Mono', monospace; }
+  .reasoning-confidence { display: flex; align-items: center; gap: 8px; }
+  .confidence-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 1px; color: #444; font-weight: 600; white-space: nowrap; }
+  .confidence-bar-track { flex: 1; height: 6px; background: #1a1a28; border-radius: 3px; overflow: hidden; }
+  .confidence-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease, background 0.3s; }
+  .confidence-bar-fill.high { background: linear-gradient(90deg, #00cc66, #22ff88); }
+  .confidence-bar-fill.med { background: linear-gradient(90deg, #ddaa00, #ffcc44); }
+  .confidence-bar-fill.low { background: linear-gradient(90deg, #ff4444, #ff6666); }
+  .confidence-value { font-size: 0.7rem; font-family: 'JetBrains Mono', monospace; font-weight: 700; min-width: 36px; text-align: right; }
+  .confidence-value.high { color: #00cc66; }
+  .confidence-value.med { color: #ddaa00; }
+  .confidence-value.low { color: #ff4444; }
+  /* Typing animation for reasoning text */
+  .reasoning-thinking.typing::after { content: '|'; animation: blink-cursor 0.6s step-end infinite; color: #555; }
+  @keyframes blink-cursor { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+  .progress-container { margin-bottom: 16px; }
+  .progress-track { height: 4px; background: #1a1a28; border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #ff4444, #ff8800); border-radius: 2px; transition: width 0.3s; }
+  .progress-label { display: flex; justify-content: space-between; font-size: 0.65rem; color: #333; margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+  .controls { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  .ctrl-btn { padding: 10px 20px; border-radius: 10px; border: 1px solid #1e1e32; background: #111118; color: #aaa; font-family: 'Inter', sans-serif; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .ctrl-btn:hover { background: #16162a; border-color: #2a2a44; color: #fff; }
+  .ctrl-btn.primary { background: rgba(255,68,68,0.1); border-color: rgba(255,68,68,0.3); color: #ff6666; }
+  .ctrl-btn.primary:hover { background: rgba(255,68,68,0.2); }
+  .speed-control { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: #555; }
+  .speed-control input[type="range"] { width: 80px; accent-color: #ff4444; }
+  .events-feed { background: #0e0e16; border: 1px solid #1a1a28; border-radius: 12px; max-height: 180px; overflow-y: auto; margin-bottom: 20px; }
+  .event-row { padding: 8px 16px; font-size: 0.78rem; font-family: 'JetBrains Mono', monospace; border-bottom: 1px solid rgba(255,255,255,0.02); display: flex; gap: 10px; align-items: center; animation: slide-in 0.3s ease; }
+  @keyframes slide-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+  .event-row .turn-badge { font-size: 0.65rem; color: #333; min-width: 30px; }
+  .event-row .event-icon { font-size: 1rem; }
+  .event-row .event-text { color: #888; }
+  .event-row .dmg-value { color: #ff4444; font-weight: 700; }
+  .event-row .block-value { color: #4488ff; font-weight: 700; }
+  .event-row.ko-event { background: rgba(255,0,0,0.05); }
+  .event-row.ko-event .event-text { color: #ff3333; font-weight: 700; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #1a1a28; border-radius: 3px; }
+
+  /* Reasoning collapsed state */
+  .reasoning-section.collapsed .reasoning-grid { display: none; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="logo">AI AGENT UFC</div>
+  <div class="engine-badge">ENGINE v0.1.0 — LLM POWERED</div>
+</div>
+<div class="fight-selector" id="fightSelector"></div>
+<div class="arena-container">
+  <div class="matchup-header">
+    <div class="fighter-info"><div class="fighter-name red" id="nameA">--</div><div class="fighter-style-tag" id="styleA">--</div></div>
+    <div class="round-info"><div class="round-label">Round</div><div class="round-num" id="roundNum">1</div></div>
+    <div class="fighter-info right"><div class="fighter-name blue" id="nameB">--</div><div class="fighter-style-tag" id="styleB">--</div></div>
+  </div>
+  <div class="hp-section">
+    <div class="hp-bar-container"><div class="hp-bar-label"><span class="hp-text">HP</span><span class="hp-value" id="hpValA" style="color:#ff4444">100</span></div><div class="hp-bar-track"><div class="hp-bar-fill red" id="hpBarA" style="width:100%"></div></div></div>
+    <div class="hp-bar-container"><div class="hp-bar-label"><span class="hp-text">HP</span><span class="hp-value" id="hpValB" style="color:#4488ff">100</span></div><div class="hp-bar-track"><div class="hp-bar-fill blue" id="hpBarB" style="width:100%"></div></div></div>
+  </div>
+  <div class="arena-ring" id="arenaRing">
+    <div class="arena-floor"></div>
+    <div class="fighter-container left" id="containerA"></div>
+    <div class="fighter-container right" id="containerB"></div>
+    <div class="result-overlay" id="resultOverlay">
+      <div class="result-text" id="resultText"></div>
+      <div class="result-method" id="resultMethod"></div>
+    </div>
+  </div>
+  <div class="action-display">
+    <div class="action-bubble red" id="actionA">--</div>
+    <div class="turn-counter"><div>TURN</div><div class="num" id="turnNum">0</div></div>
+    <div class="action-bubble blue" id="actionB">--</div>
+  </div>
+
+  <!-- AI Reasoning Panel -->
+  <div class="reasoning-section" id="reasoningSection">
+    <div class="reasoning-header">
+      <div class="reasoning-title"><span class="ai-dot"></span> AI REASONING — LIVE THOUGHT PROCESS</div>
+      <button class="reasoning-toggle" id="reasoningToggle" onclick="toggleReasoning()">Hide</button>
+    </div>
+    <div class="reasoning-grid">
+      <div class="reasoning-card red" id="reasoningCardA">
+        <div class="reasoning-card-header">
+          <span class="reasoning-fighter-name red" id="reasoningNameA">FIGHTER A</span>
+          <span class="reasoning-model-tag" id="reasoningModelA">claude-sonnet-4-20250514</span>
+        </div>
+        <div class="reasoning-thinking empty" id="reasoningThinkingA">Waiting for match to start...</div>
+        <div class="reasoning-strategy">
+          <span class="reasoning-strategy-label">Strategy:</span>
+          <span class="reasoning-strategy-text" id="reasoningStrategyA">--</span>
+        </div>
+        <div class="reasoning-confidence">
+          <span class="confidence-label">Confidence:</span>
+          <div class="confidence-bar-track"><div class="confidence-bar-fill high" id="confidenceBarA" style="width:0%"></div></div>
+          <span class="confidence-value high" id="confidenceValA">--</span>
+        </div>
+      </div>
+      <div class="reasoning-card blue" id="reasoningCardB">
+        <div class="reasoning-card-header">
+          <span class="reasoning-fighter-name blue" id="reasoningNameB">FIGHTER B</span>
+          <span class="reasoning-model-tag" id="reasoningModelB">gpt-4o-mini</span>
+        </div>
+        <div class="reasoning-thinking empty" id="reasoningThinkingB">Waiting for match to start...</div>
+        <div class="reasoning-strategy">
+          <span class="reasoning-strategy-label">Strategy:</span>
+          <span class="reasoning-strategy-text" id="reasoningStrategyB">--</span>
+        </div>
+        <div class="reasoning-confidence">
+          <span class="confidence-label">Confidence:</span>
+          <div class="confidence-bar-track"><div class="confidence-bar-fill high" id="confidenceBarB" style="width:0%"></div></div>
+          <span class="confidence-value high" id="confidenceValB">--</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="progress-container">
+    <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    <div class="progress-label"><span id="progressLeft">Turn 0</span><span id="progressRight">--</span></div>
+  </div>
+  <div class="controls">
+    <button class="ctrl-btn" id="btnPrev" onclick="prevTurn()">&#9664; Prev</button>
+    <button class="ctrl-btn primary" id="btnPlay" onclick="togglePlay()">&#9654; Play</button>
+    <button class="ctrl-btn" id="btnNext" onclick="nextTurn()">Next &#9654;</button>
+    <button class="ctrl-btn" id="btnReset" onclick="resetMatch()">Reset</button>
+    <div class="speed-control"><span>Speed</span><input type="range" id="speedSlider" min="1" max="10" value="5" oninput="updateSpeed()"><span id="speedLabel">1x</span></div>
+  </div>
+  <div class="events-feed" id="eventsFeed"></div>
+</div>
+
+<script>
+// ============= FIGHT DATA WITH AI REASONING =============
+// Each turn now includes reasoningA/reasoningB with the AI's actual thought process
+
+const FIGHTS = [
+  {
+    "nameA": "AGGRO MIKE", "nameB": "TURTLE TOM", "styleA": "aggro", "styleB": "counter",
+    "modelA": "claude-sonnet-4-20250514", "modelB": "gpt-4o-mini",
+    "seed": 42069,
+    "result": {"winner":"A","method":"ko","round":1,"turn":11,"scorecard":{"damageA":109,"damageB":87,"hitsA":6,"hitsB":6,"knockdownsA":0,"knockdownsB":0}},
+    "turns": [
+      {"turn":1,"round":1,"actionA":"hook","actionB":"strike","hpA":89,"hpB":100,"events":[{"type":"miss","source":"A","target":"B"},{"type":"damage","source":"B","target":"A","value":11}],
+       "reasoningA":{"thinking":"Opening round. I'm an aggro fighter so I want to establish dominance early. Going for a powerful hook to the head to test their defense and set the tempo. High risk, high reward.","strategy":"Aggressive opener - establish pressure","confidence":0.72,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"First turn, no data on opponent yet. I'll start with a quick strike to probe their tendencies while keeping my options open. Conservative start while I gather information.","strategy":"Probe with quick strike","confidence":0.65,"model":"gpt-4o-mini"}},
+      {"turn":2,"round":1,"actionA":"strike","actionB":"kick","hpA":76,"hpB":100,"events":[{"type":"miss","source":"A","target":"B"},{"type":"damage","source":"B","target":"A","value":13}],
+       "reasoningA":{"thinking":"My hook missed, I took 11 damage from their strike. They're being aggressive too. Need to keep attacking but be a bit more accurate. Quick jab to the body should be harder to dodge.","strategy":"Fast counter-pressure with jab","confidence":0.68,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"My strike landed for 11 damage! Opponent missed their hook. They're committing to power shots. A kick to the body should catch them off-balance since they're overextending.","strategy":"Punish overextension with kick","confidence":0.74,"model":"gpt-4o-mini"}},
+      {"turn":3,"round":1,"actionA":"strike","actionB":"guard","hpA":76,"hpB":100,"events":[{"type":"miss","source":"A","target":"B"}],
+       "reasoningA":{"thinking":"Down to 76 HP and haven't landed a hit yet. They got me with a kick for 13 more. I need to be more strategic but my aggro style means I should keep pressing. Another strike attempt.","strategy":"Persistent pressure despite misses","confidence":0.55,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"I've dealt 24 damage and taken none. I'm winning the exchange clearly. Time to guard and recover stamina while they waste energy on missed attacks. Classic counter-fighter patience.","strategy":"Guard to recover — let them tire","confidence":0.82,"model":"gpt-4o-mini"}},
+      {"turn":4,"round":1,"actionA":"hook","actionB":"strike","hpA":64,"hpB":71,"events":[{"type":"damage","source":"A","target":"B","value":29},{"type":"damage","source":"B","target":"A","value":12}],
+       "reasoningA":{"thinking":"They guarded last turn, which means they're probably going to counter-attack this turn. I'll throw a big hook anyway — my aggro style gives me bonus power and I NEED to start dealing damage.","strategy":"Power hook — break through their rhythm","confidence":0.63,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"After guarding and recovering, time to strike while they're frustrated from missing. Quick strike should catch them while they're still committing to haymakers.","strategy":"Counter-strike after guard","confidence":0.71,"model":"gpt-4o-mini"}},
+      {"turn":5,"round":1,"actionA":"strike","actionB":"hook","hpA":44,"hpB":53,"events":[{"type":"damage","source":"A","target":"B","value":18},{"type":"damage","source":"B","target":"A","value":20}],
+       "reasoningA":{"thinking":"YES! My hook landed for 29 damage! We traded but I got the better of it. They're at 71 HP now. Keep the momentum going with strikes — I finally found my range.","strategy":"Maintain momentum — keep hitting","confidence":0.78,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Took a massive 29 damage hook but I landed 12 back. I'm at 71 HP to their 64. Need to be more aggressive now — a hook should trade favorably given my counter-style damage reduction.","strategy":"Trade damage with hook","confidence":0.59,"model":"gpt-4o-mini"}},
+      {"turn":6,"round":1,"actionA":"special","actionB":"guard","hpA":44,"hpB":53,"events":[{"type":"miss","source":"A","target":"B"}],
+       "reasoningA":{"thinking":"We're both hurt but I landed two good hits. At 44 HP to their 53, I need a big play. Going for my special — if this haymaker lands it could end the fight. All or nothing.","strategy":"Special haymaker — go for the KO","confidence":0.52,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Both fighters are banged up. I anticipate a big attack coming since the aggro fighter has been escalating. Guard high to absorb whatever comes and look for the counter opportunity.","strategy":"Defensive read — expect big attack","confidence":0.76,"model":"gpt-4o-mini"}},
+      {"turn":7,"round":1,"actionA":"strike","actionB":"kick","hpA":44,"hpB":37,"events":[{"type":"damage","source":"A","target":"B","value":16},{"type":"miss","source":"B","target":"A"}],
+       "reasoningA":{"thinking":"My special missed! Wasted stamina. But I'm still in this at 44 HP. Back to basics — fast strike to keep them on the defensive. Can't afford another missed special.","strategy":"Recover with reliable strikes","confidence":0.64,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"They wasted their special! I blocked it perfectly. Now they're low on stamina from the special attempt. Kick to the body while they recover.","strategy":"Capitalize on wasted stamina","confidence":0.70,"model":"gpt-4o-mini"}},
+      {"turn":8,"round":1,"actionA":"guard","actionB":"strike","hpA":44,"hpB":37,"events":[{"type":"miss","source":"B","target":"A"}],
+       "reasoningA":{"thinking":"Landed 16 damage, they're at 37 HP now and I'm at 44. I'm actually ahead! But my stamina is low after that special. Guard for one turn to recover before finishing them.","strategy":"Brief stamina recovery","confidence":0.73,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Down to 37 HP, this is getting dangerous. Their kick missed me. Quick strike while they might be recovering from the miss. Need to close this damage gap.","strategy":"Pressure before they recover","confidence":0.55,"model":"gpt-4o-mini"}},
+      {"turn":9,"round":1,"actionA":"strike","actionB":"guard","hpA":44,"hpB":30,"events":[{"type":"block","source":"B","target":"A","value":11},{"type":"damage","source":"A","target":"B","value":7}],
+       "reasoningA":{"thinking":"Great guard turn — their strike missed me and I recovered stamina. Now back on offense. They're at 37 HP, 30 more and they're done. Strike to keep chipping away.","strategy":"Chip damage — stay disciplined","confidence":0.77,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"My strike missed! I'm at 37 HP and falling behind. Need to guard and try to survive long enough to find a counter opportunity. Can't trade anymore.","strategy":"Defensive survival — wait for opening","confidence":0.42,"model":"gpt-4o-mini"}},
+      {"turn":10,"round":1,"actionA":"hook","actionB":"strike","hpA":31,"hpB":3,"events":[{"type":"damage","source":"A","target":"B","value":27},{"type":"damage","source":"B","target":"A","value":13}],
+       "reasoningA":{"thinking":"Punched through their guard for 7 chip damage. They're at 30 HP now. Time to go for the finish — a big hook while they're hurt. This could be the knockout blow.","strategy":"Finish them — power hook","confidence":0.85,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Barely at 30 HP after blocking. I HAVE to attack now or I'll lose by attrition. Going for a desperation strike — if I don't start dealing damage it's over.","strategy":"Desperation attack","confidence":0.31,"model":"gpt-4o-mini"}},
+      {"turn":11,"round":1,"actionA":"strike","actionB":"hook","hpA":13,"hpB":0,"events":[{"type":"damage","source":"A","target":"B","value":12},{"type":"damage","source":"B","target":"A","value":18},{"type":"ko","source":"A","target":"B"}],
+       "reasoningA":{"thinking":"HUGE hit — 27 damage! They're at 3 HP, this is it. One more strike of any kind should finish the job. Going for a clean jab to seal the victory.","strategy":"Finish — any hit wins","confidence":0.95,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"3 HP left. This is my last stand. Going all in with a hook — if it lands big enough and their strike misses, there's still a sliver of hope. Nothing to lose.","strategy":"Last stand — all-in hook","confidence":0.15,"model":"gpt-4o-mini"}}
+    ]
+  },
+  {
+    "nameA": "COUNTER CARL", "nameB": "MIRROR MAX", "styleA": "counter", "styleB": "adaptive",
+    "modelA": "claude-sonnet-4-20250514", "modelB": "claude-haiku-3.5",
+    "seed": 12345,
+    "result":{"winner":"B","method":"ko","round":1,"turn":25,"scorecard":{"damageA":52,"damageB":111,"hitsA":3,"hitsB":9,"knockdownsA":0,"knockdownsB":0}},
+    "turns":[
+      {"turn":1,"round":1,"actionA":"guard","actionB":"guard","hpA":100,"hpB":100,"events":[],
+       "reasoningA":{"thinking":"Counter style means I wait for them to attack first. Opening with guard to see what they do. Patience wins fights.","strategy":"Read opponent tendencies","confidence":0.70,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Mirror strategy: first turn, no data to mirror. Default to guard while I observe the opponent's patterns and build a model of their behavior.","strategy":"Observe and adapt","confidence":0.60,"model":"claude-haiku-3.5"}},
+      {"turn":2,"round":1,"actionA":"guard","actionB":"hook","hpA":100,"hpB":100,"events":[{"type":"miss","source":"B","target":"A"}],
+       "reasoningA":{"thinking":"Both guarded turn 1. I'll keep guarding — counter-fighters need to be patient. They'll have to attack eventually.","strategy":"Continue waiting for attack","confidence":0.72,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Opponent guarded. Mirroring guard forever leads to stalemate. Breaking the pattern with a hook to force a reaction and create data to work with.","strategy":"Force engagement with hook","confidence":0.55,"model":"claude-haiku-3.5"}},
+      {"turn":3,"round":1,"actionA":"guard","actionB":"hook","hpA":92,"hpB":100,"events":[{"type":"block","source":"A","target":"B","value":11},{"type":"damage","source":"B","target":"A","value":8}],
+       "reasoningA":{"thinking":"They threw a hook but missed. They're getting impatient. Perfect — keep guarding and let them waste stamina while I wait for the perfect counter.","strategy":"Absorb pressure, conserve energy","confidence":0.75,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Hook missed but at least I'm testing their guard. They just keep blocking. I'll throw another hook — eventually their guard will break and I'll find the opening.","strategy":"Persistent offense to break guard","confidence":0.58,"model":"claude-haiku-3.5"}},
+      {"turn":4,"round":1,"actionA":"guard","actionB":"hook","hpA":92,"hpB":100,"events":[{"type":"miss","source":"B","target":"A"}],
+       "reasoningA":{"thinking":"Blocked their hook — took 8 through the guard but that's fine. My guard is holding. Keep the wall up, they're burning stamina fast with these hooks.","strategy":"Guard wall — drain their stamina","confidence":0.78,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Another hook. I need to keep the pressure on. They're just sitting there guarding — I'll keep swinging until something breaks through.","strategy":"Overwhelm the guard","confidence":0.52,"model":"claude-haiku-3.5"}},
+      {"turn":5,"round":1,"actionA":"guard","actionB":"hook","hpA":84,"hpB":100,"events":[{"type":"block","source":"A","target":"B","value":11},{"type":"damage","source":"B","target":"A","value":8}],
+       "reasoningA":{"thinking":"Their hook missed this time. They've thrown 3 hooks in a row — pattern detected. Counter-fighters capitalize on predictable opponents. Still guarding to build a bigger read.","strategy":"Confirm pattern before countering","confidence":0.80,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"The hook pattern isn't working. 8 damage through guard but they're at 84 HP still. Need to vary my approach... but the hook has been my best producer. One more.","strategy":"Persist with hook offense","confidence":0.48,"model":"claude-haiku-3.5"}},
+      {"turn":6,"round":1,"actionA":"guard","actionB":"hook","hpA":74,"hpB":100,"events":[{"type":"block","source":"A","target":"B","value":11},{"type":"damage","source":"B","target":"A","value":10}],
+       "reasoningA":{"thinking":"Another chip hit for 8, I'm at 84. But they've thrown 4 hooks and their stamina must be getting low. One more guard turn and then I counter when they're exhausted.","strategy":"One more guard then counter","confidence":0.76,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Finally getting some real damage through — 10 this time. They're at 74 HP. My hooks are slowly working. Keep the pressure up!","strategy":"Damage is accumulating — press on","confidence":0.62,"model":"claude-haiku-3.5"}},
+      {"turn":7,"round":1,"actionA":"guard","actionB":"hook","hpA":74,"hpB":100,"events":[{"type":"miss","source":"B","target":"A"}],
+       "reasoningA":{"thinking":"10 through the guard, down to 74. They've taken nothing. My counter strategy isn't working if I never actually counter. But their hook just hit me harder than before.","strategy":"Hold guard one more turn","confidence":0.62,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"I'm winning the war of attrition at 100 HP to 74. Hooks keep landing chip damage even through guard. Maintaining this approach is the right call.","strategy":"Continue winning attrition","confidence":0.72,"model":"claude-haiku-3.5"}},
+      {"turn":8,"round":1,"actionA":"guard","actionB":"hook","hpA":74,"hpB":100,"events":[{"type":"miss","source":"B","target":"A"}],
+       "reasoningA":{"thinking":"Hook missed. Their stamina must be depleting from all these hooks. I need to counter NOW while they're gassing. Next turn I attack.","strategy":"Counter next turn for sure","confidence":0.68,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Hook missed this time. Their guard must have a rhythm — hit, miss, hit, miss. They're at 74 HP. I'm dominating this fight without taking any damage.","strategy":"Risk-free pressure","confidence":0.75,"model":"claude-haiku-3.5"}},
+      {"turn":9,"round":1,"actionA":"guard","actionB":"guard","hpA":74,"hpB":100,"events":[],
+       "reasoningA":{"thinking":"Another miss from them. OK I keep saying 'next turn' but I need to commit. Their hook missed twice — maybe they'll switch. One more read...","strategy":"Final read before counter-attack","confidence":0.58,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Two misses in a row — my stamina is getting low from all these hooks. Guard to recover, then resume the assault. Mirror their guard this turn.","strategy":"Stamina recovery guard","confidence":0.65,"model":"claude-haiku-3.5"}},
+      {"turn":10,"round":1,"actionA":"kick","actionB":"hook","hpA":74,"hpB":79,"events":[{"type":"damage","source":"A","target":"B","value":21},{"type":"miss","source":"B","target":"A"}],
+       "reasoningA":{"thinking":"Both guarded — the tension is building. NOW is the time. They'll expect another guard. Kick to the body — unexpected angle, should catch them off guard.","strategy":"Surprise counter-kick","confidence":0.82,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Both guarded last turn. They're probably still guarding — resume hooks. Stamina is recovered enough for another volley.","strategy":"Resume hook pressure","confidence":0.60,"model":"claude-haiku-3.5"}},
+      {"turn":11,"round":1,"actionA":"guard","actionB":"kick","hpA":74,"hpB":79,"events":[{"type":"miss","source":"B","target":"A"}],
+       "reasoningA":{"thinking":"21 DAMAGE! My kick landed clean while their hook missed. I'm finally on the board. Back to guard — they'll be angry and throw something wild.","strategy":"Guard after successful counter","confidence":0.79,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Took a 21 damage kick! Down to 79 HP. They finally attacked! I'll mirror and try a kick since it worked for them. Adapting to what's effective.","strategy":"Mirror opponent's successful kick","confidence":0.56,"model":"claude-haiku-3.5"}},
+      {"turn":12,"round":1,"actionA":"guard","actionB":"guard","hpA":74,"hpB":79,"events":[],
+       "reasoningA":{"thinking":"Their kick missed. They're trying to copy my kick — mirror behavior detected. Guard and wait for them to commit to something punishable.","strategy":"Identify mirror pattern","confidence":0.74,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Kick missed. Kicking isn't my strength. Back to guard to regroup and figure out what's working. They're at 74 HP, I'm at 79 — it's close.","strategy":"Reset and reassess","confidence":0.50,"model":"claude-haiku-3.5"}},
+      {"turn":13,"round":1,"actionA":"kick","actionB":"hook","hpA":55,"hpB":63,"events":[{"type":"damage","source":"A","target":"B","value":16},{"type":"damage","source":"B","target":"A","value":19}],
+       "reasoningA":{"thinking":"Both guarded again. Same rhythm as turn 9. They guarded so they'll attack next — and they keep defaulting to hooks. Kick again to counter their hook timing.","strategy":"Repeat successful kick counter","confidence":0.73,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Guard stalemate again. Going back to hooks — my most reliable damage source. Eventually the accumulated chip damage will force them to act desperately.","strategy":"Return to proven hook strategy","confidence":0.64,"model":"claude-haiku-3.5"}},
+      {"turn":14,"round":1,"actionA":"guard","actionB":"kick","hpA":55,"hpB":63,"events":[{"type":"miss","source":"B","target":"A"}],
+       "reasoningA":{"thinking":"We traded — 16 for 19. They're at 63, I'm at 55. The gap is closing but I'm still behind. Back to guard, wait for the counter opportunity.","strategy":"Resume counter stance","confidence":0.65,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Traded blows, 19 for 16, I came out slightly ahead. They kicked successfully twice now so I'll mirror that — kick while they recover.","strategy":"Mirror opponent's kick","confidence":0.52,"model":"claude-haiku-3.5"}},
+      {"turn":15,"round":1,"actionA":"guard","actionB":"guard","hpA":55,"hpB":63,"events":[],
+       "reasoningA":{"thinking":"Their kick missed my guard. Same pattern — they copy my last attack type. Predictable mirror behavior. I can exploit this.","strategy":"Exploit mirror pattern","confidence":0.70,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Kick missed against guard. The counter-fighter is frustrating to fight. Guard and recover to try again.","strategy":"Recover stamina","confidence":0.48,"model":"claude-haiku-3.5"}},
+      {"turn":16,"round":1,"actionA":"hook","actionB":"hook","hpA":55,"hpB":63,"events":[{"type":"miss","source":"A","target":"B"},{"type":"miss","source":"B","target":"A"}],
+       "reasoningA":{"thinking":"Both guarded. Time to break the cycle with a hook — something different to catch them off guard since they've been mirroring kicks.","strategy":"Change angle with hook","confidence":0.60,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Guard-guard again. They'll probably kick next (their go-to attack). I'll go hook to vary it up and catch them mid-kick.","strategy":"Intercept expected kick","confidence":0.55,"model":"claude-haiku-3.5"}},
+      {"turn":17,"round":1,"actionA":"guard","actionB":"hook","hpA":55,"hpB":63,"events":[{"type":"miss","source":"B","target":"A"}],
+       "reasoningA":{"thinking":"Both missed hooks — bad exchange for both of us. Back to guard. They'll probably mirror my hook...","strategy":"Guard against expected mirror","confidence":0.66,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Both hooked and missed. They used hook so I'll mirror it. Hook again — eventually one of us will land.","strategy":"Mirror hook","confidence":0.50,"model":"claude-haiku-3.5"}},
+      {"turn":18,"round":1,"actionA":"guard","actionB":"guard","hpA":55,"hpB":63,"events":[],
+       "reasoningA":{"thinking":"Their hook missed my guard. HP is 55 to 63, I'm losing slowly. Need to find another big counter opportunity like turns 10 and 13.","strategy":"Wait for counter window","confidence":0.60,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Hook missed the guard again. Stamina is low, need to guard and recover. This fight is becoming a chess match.","strategy":"Recover and regroup","confidence":0.52,"model":"claude-haiku-3.5"}},
+      {"turn":19,"round":1,"actionA":"strike","actionB":"hook","hpA":38,"hpB":48,"events":[{"type":"damage","source":"A","target":"B","value":15},{"type":"damage","source":"B","target":"A","value":17}],
+       "reasoningA":{"thinking":"Both guarding again. I need to take a risk — strike to mix things up. Can't just guard forever when I'm behind on HP.","strategy":"Aggressive pivot to close HP gap","confidence":0.56,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Guard stalemate. They must be getting desperate being behind on HP. Hook to capitalize if they finally decide to attack.","strategy":"Hook to catch desperation attack","confidence":0.62,"model":"claude-haiku-3.5"}},
+      {"turn":20,"round":1,"actionA":"guard","actionB":"strike","hpA":34,"hpB":48,"events":[{"type":"block","source":"A","target":"B","value":10},{"type":"damage","source":"B","target":"A","value":4}],
+       "reasoningA":{"thinking":"Traded 15 for 17 — not great for me. Down to 38 vs 48. Guard to reset after the exchange.","strategy":"Defensive reset","confidence":0.55,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Won the trade 17 to 15! They're at 38 HP now. Follow up with a quick strike to keep applying pressure while they're hurt.","strategy":"Follow-up pressure strike","confidence":0.68,"model":"claude-haiku-3.5"}},
+      {"turn":21,"round":1,"actionA":"guard","actionB":"guard","hpA":34,"hpB":48,"events":[],
+       "reasoningA":{"thinking":"Only 4 through guard. At 34 HP vs 48, I'm in trouble. Need to guard and figure out a plan to make up 14 HP deficit.","strategy":"Survive and plan","confidence":0.40,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"4 chip damage through guard. They're at 34 now. Let them guard while I recover — I can afford to be patient with a 14 HP lead.","strategy":"Patient — protect HP lead","confidence":0.78,"model":"claude-haiku-3.5"}},
+      {"turn":22,"round":1,"actionA":"kick","actionB":"hook","hpA":15,"hpB":48,"events":[{"type":"miss","source":"A","target":"B"},{"type":"damage","source":"B","target":"A","value":19}],
+       "reasoningA":{"thinking":"Both guarded. I can't keep guarding, I'm too far behind. All-in kick — same move that worked for 21 damage earlier. It's now or never.","strategy":"Desperation counter-kick","confidence":0.45,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Guard-guard again but I'm way ahead. They'll get desperate soon and attack. Hook ready to punish whatever they throw.","strategy":"Punish desperation attack","confidence":0.80,"model":"claude-haiku-3.5"}},
+      {"turn":23,"round":1,"actionA":"guard","actionB":"kick","hpA":8,"hpB":48,"events":[{"type":"block","source":"A","target":"B","value":10},{"type":"damage","source":"B","target":"A","value":7}],
+       "reasoningA":{"thinking":"Kick missed and I ate a 19 damage hook. Down to 15 HP. I'm in critical territory. Guard to survive one more turn.","strategy":"Survival guard","confidence":0.22,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"19 damage hook landed! They're at 15 HP, nearly dead. Kick to the body for the finish — should be enough to close it out.","strategy":"Finish with kick","confidence":0.88,"model":"claude-haiku-3.5"}},
+      {"turn":24,"round":1,"actionA":"guard","actionB":"guard","hpA":8,"hpB":48,"events":[],
+       "reasoningA":{"thinking":"7 through guard, down to 8 HP. I'm basically dead. One more hit and it's over. Guard is my only option.","strategy":"Pray and guard","confidence":0.12,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"7 chip through guard. They're at 8 HP — one clean hit ends it. Guard to recover stamina for the killing blow. No rush.","strategy":"Recover for killing blow","confidence":0.90,"model":"claude-haiku-3.5"}},
+      {"turn":25,"round":1,"actionA":"hook","actionB":"hook","hpA":0,"hpB":48,"events":[{"type":"miss","source":"A","target":"B"},{"type":"damage","source":"B","target":"A","value":19},{"type":"ko","source":"B","target":"A"}],
+       "reasoningA":{"thinking":"8 HP left, no choice but to go for broke. Hook with maximum power — if by some miracle it lands, I might survive. This is my last shot.","strategy":"All-in final hook","confidence":0.10,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"They're at 8 HP and I'm at 48. They'll either guard (chip kills) or attack desperately. Hook for 19+ should guarantee the KO no matter what.","strategy":"KO hook — end it","confidence":0.95,"model":"claude-haiku-3.5"}}
+    ]
+  },
+  {
+    "nameA": "AGGRO MIKE", "nameB": "BRAWLER BOB", "styleA": "aggro", "styleB": "brawler",
+    "modelA": "claude-sonnet-4-20250514", "modelB": "gpt-4o",
+    "seed": 55555,
+    "result":{"winner":"draw","method":"ko","round":1,"turn":6,"scorecard":{"damageA":123,"damageB":132,"hitsA":5,"hitsB":5,"knockdownsA":0,"knockdownsB":0}},
+    "turns":[
+      {"turn":1,"round":1,"actionA":"hook","actionB":"hook","hpA":77,"hpB":100,"events":[{"type":"miss","source":"A","target":"B"},{"type":"damage","source":"B","target":"A","value":23}],
+       "reasoningA":{"thinking":"Aggro vs brawler — this is going to be a slugfest. Opening with a hook to establish dominance. No point playing it safe against another aggressive fighter.","strategy":"Assert dominance with hook","confidence":0.70,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Brawler time! Against aggro we need to match their energy. Hook for hook — first one to connect gets the momentum. Let's go!","strategy":"Match aggression — big hook","confidence":0.72,"model":"gpt-4o"}},
+      {"turn":2,"round":1,"actionA":"strike","actionB":"strike","hpA":57,"hpB":82,"events":[{"type":"damage","source":"A","target":"B","value":18},{"type":"damage","source":"B","target":"A","value":20}],
+       "reasoningA":{"thinking":"Took 23 damage but they hooked too — brawler matchup as expected. Strike for faster speed since hooks are trading wide.","strategy":"Speed advantage with strikes","confidence":0.62,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"23 damage hook landed! Now switch to strikes for better accuracy. Keep the pressure on while they're reeling.","strategy":"Quick follow-up strikes","confidence":0.75,"model":"gpt-4o"}},
+      {"turn":3,"round":1,"actionA":"strike","actionB":"strike","hpA":43,"hpB":67,"events":[{"type":"damage","source":"A","target":"B","value":15},{"type":"damage","source":"B","target":"A","value":14}],
+       "reasoningA":{"thinking":"Traded 18 for 20 — close exchange. I'm at 57 to 82, behind. Keep striking, can't let up. Speed and volume is key.","strategy":"Volume punching","confidence":0.58,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"We're both just throwing hands. 20 for 18, slight edge to me. Stamina is fine. More strikes!","strategy":"Outpace with strikes","confidence":0.70,"model":"gpt-4o"}},
+      {"turn":4,"round":1,"actionA":"hook","actionB":"hook","hpA":43,"hpB":47,"events":[{"type":"damage","source":"A","target":"B","value":20},{"type":"miss","source":"B","target":"A"}],
+       "reasoningA":{"thinking":"15 for 14, basically even. But I'm at 43 to 67, way behind. Need a big power shot to close the gap. Hook!","strategy":"Power shot to close gap","confidence":0.55,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"Close trade again. I'm ahead by 24 HP. Time for a big hook to seal the deal — one good punch could end this.","strategy":"Knockout hook attempt","confidence":0.68,"model":"gpt-4o"}},
+      {"turn":5,"round":1,"actionA":"strike","actionB":"strike","hpA":22,"hpB":29,"events":[{"type":"damage","source":"A","target":"B","value":18},{"type":"damage","source":"B","target":"A","value":21}],
+       "reasoningA":{"thinking":"HUGE hook landed for 20 and theirs missed! 43 to 47, we're nearly even now! Quick strike to maintain the momentum swing.","strategy":"Capitalize on momentum","confidence":0.74,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"My hook missed and theirs landed for 20?! We're at 47 to 43 now, barely ahead. Quick strike, need to recover the advantage.","strategy":"Recover lost advantage","confidence":0.50,"model":"gpt-4o"}},
+      {"turn":6,"round":1,"actionA":"special","actionB":"special","hpA":0,"hpB":0,"events":[{"type":"damage","source":"A","target":"B","value":52},{"type":"damage","source":"B","target":"A","value":54},{"type":"ko","source":"B","target":"A"},{"type":"ko","source":"A","target":"B"}],
+       "reasoningA":{"thinking":"22 HP to 29 — one big shot ends it either way. This is it. SPECIAL — haymaker with everything I have. If we both go down, so be it. Going out swinging!","strategy":"All-in special — glory or death","confidence":0.50,"model":"claude-sonnet-4-20250514"},
+       "reasoningB":{"thinking":"29 HP to 22 — we're both on death's door. Only one move makes sense. SPECIAL haymaker. If they guard, I win. If they attack too, may the best AI win.","strategy":"YOLO special — winner takes all","confidence":0.50,"model":"gpt-4o"}}
+    ]
+  },
+  {
+    "nameA": "TURTLE TOM", "nameB": "COUNTER CARL", "styleA": "counter", "styleB": "counter",
+    "modelA": "gpt-4o", "modelB": "claude-sonnet-4-20250514",
+    "seed": 77777,
+    "result":{"winner":"A","method":"ko","round":1,"turn":16,"scorecard":{"damageA":101,"damageB":63,"hitsA":9,"hitsB":4,"knockdownsA":0,"knockdownsB":0}},
+    "turns":[
+      {"turn":1,"round":1,"actionA":"strike","actionB":"guard","hpA":100,"hpB":94,"events":[{"type":"block","source":"B","target":"A","value":10},{"type":"damage","source":"A","target":"B","value":6}],
+       "reasoningA":{"thinking":"Counter vs counter mirror. Someone has to throw first. Starting with a quick strike to probe — if they guard, I chip; if they attack, we trade.","strategy":"Probe with opening strike","confidence":0.60,"model":"gpt-4o"},
+       "reasoningB":{"thinking":"Counter mirror match. Classic prisoner's dilemma. I'll guard first and let them reveal their hand. Patience is my greatest weapon.","strategy":"Guard and read first","confidence":0.72,"model":"claude-sonnet-4-20250514"}},
+      {"turn":2,"round":1,"actionA":"kick","actionB":"guard","hpA":100,"hpB":88,"events":[{"type":"block","source":"B","target":"A","value":10},{"type":"damage","source":"A","target":"B","value":6}],
+       "reasoningA":{"thinking":"6 chip through their guard! They're playing passive. Good — I'll keep varying my attacks. Kick to change the angle.","strategy":"Vary attacks against passive guard","confidence":0.65,"model":"gpt-4o"},
+       "reasoningB":{"thinking":"They struck first and chipped 6 through my guard. They're probing. Keep guarding — they'll tire eventually and then I counter.","strategy":"Absorb chips, wait for opening","confidence":0.68,"model":"claude-sonnet-4-20250514"}},
+      {"turn":3,"round":1,"actionA":"guard","actionB":"guard","hpA":100,"hpB":88,"events":[],
+       "reasoningA":{"thinking":"Another 6 chip with kick. They just keep guarding. Let me guard too and recover stamina — then hit them again.","strategy":"Recover before next assault","confidence":0.62,"model":"gpt-4o"},
+       "reasoningB":{"thinking":"6 more chip. At 88 HP while they're at 100. I need to be patient but this is becoming expensive. Still guarding until I see a clear counter opportunity.","strategy":"Maintain patience despite chip damage","confidence":0.60,"model":"claude-sonnet-4-20250514"}},
+      {"turn":4,"round":1,"actionA":"strike","actionB":"kick","hpA":85,"hpB":73,"events":[{"type":"damage","source":"A","target":"B","value":15},{"type":"damage","source":"B","target":"A","value":15}],
+       "reasoningA":{"thinking":"Both guarded — reset. They'll probably keep guarding so I'll strike again. Building a rhythm of attack, guard, attack.","strategy":"Resume attack rhythm","confidence":0.67,"model":"gpt-4o"},
+       "reasoningB":{"thinking":"Both guarded. I can't just keep taking chip damage. Time to attack — kick to the body since they've been aggressive with upper body strikes.","strategy":"Counter-attack to body","confidence":0.58,"model":"claude-sonnet-4-20250514"}},
+      {"turn":5,"round":1,"actionA":"hook","actionB":"guard","hpA":85,"hpB":66,"events":[{"type":"block","source":"B","target":"A","value":11},{"type":"damage","source":"A","target":"B","value":7}],
+       "reasoningA":{"thinking":"Even trade 15-15 but I'm ahead 85 to 73. They attacked! Good, now I know they'll probably guard again to recover. Hook to punish the guard.","strategy":"Hook against expected guard","confidence":0.72,"model":"gpt-4o"},
+       "reasoningB":{"thinking":"Even 15-15 trade. At 73 to 85. My attack didn't help close the gap. Back to guard to regroup and try to find a better counter angle.","strategy":"Regroup with guard","confidence":0.52,"model":"claude-sonnet-4-20250514"}},
+      {"turn":6,"round":1,"actionA":"guard","actionB":"guard","hpA":85,"hpB":66,"events":[],
+       "reasoningA":{"thinking":"7 chip through guard with the hook. They're at 66 now, I'm at 85. Guard to recover after the hook.","strategy":"Stamina recovery","confidence":0.70,"model":"gpt-4o"},
+       "reasoningB":{"thinking":"7 more chip. Down to 66 vs 85. This patient strategy is losing. But abandoning it feels wrong for a counter-fighter. Guard to recover.","strategy":"Reluctant guard — losing patience","confidence":0.45,"model":"claude-sonnet-4-20250514"}},
+      {"turn":7,"round":1,"actionA":"kick","actionB":"strike","hpA":72,"hpB":48,"events":[{"type":"damage","source":"A","target":"B","value":18},{"type":"damage","source":"B","target":"A","value":13}],
+       "reasoningA":{"thinking":"Both guarded. Perfect time to attack again — kick to keep mixing up my approach. They'll expect strike or hook.","strategy":"Unexpected kick timing","confidence":0.68,"model":"gpt-4o"},
+       "reasoningB":{"thinking":"Both guarded. I HAVE to attack now. 66 to 85, I'm losing badly. Strike for speed and hope to connect.","strategy":"Forced aggression — can't wait longer","confidence":0.48,"model":"claude-sonnet-4-20250514"}},
+      {"turn":8,"round":1,"actionA":"strike","actionB":"guard","hpA":72,"hpB":43,"events":[{"type":"block","source":"B","target":"A","value":10},{"type":"damage","source":"A","target":"B","value":5}],
+       "reasoningA":{"thinking":"Won the trade 18 to 13! They're at 48, I'm at 72. Dominant position. Quick strike to keep the pressure on.","strategy":"Maintain dominant pressure","confidence":0.78,"model":"gpt-4o"},
+       "reasoningB":{"thinking":"Lost the trade badly. 48 HP to 72. Guard to survive — counter strategy has completely failed in this mirror match.","strategy":"Survival mode","confidence":0.35,"model":"claude-sonnet-4-20250514"}},
+      {"turn":9,"round":1,"actionA":"guard","actionB":"guard","hpA":72,"hpB":43,"events":[],
+       "reasoningA":{"thinking":"5 chip again. They're at 43, I'm at 72. Nearly 30 HP ahead. Guard to recover stamina — no need to rush.","strategy":"Comfortable lead — recover","confidence":0.82,"model":"gpt-4o"},
+       "reasoningB":{"thinking":"5 chip, down to 43. Way behind. Guarding to try to find any opening. The patient approach isn't working but attacking hasn't either.","strategy":"Desperation patience","confidence":0.30,"model":"claude-sonnet-4-20250514"}},
+      {"turn":10,"round":1,"actionA":"strike","actionB":"kick","hpA":72,"hpB":33,"events":[{"type":"damage","source":"A","target":"B","value":10},{"type":"miss","source":"B","target":"A"}],
+       "reasoningA":{"thinking":"Both guarded. Time to attack — they're too hurt to trade. Strike should be safe.","strategy":"Safe pressure from dominant position","confidence":0.80,"model":"gpt-4o"},
+       "reasoningB":{"thinking":"Must attack or die slowly. Kick to try for distance advantage — maybe catching them off guard.","strategy":"Hail Mary kick","confidence":0.32,"model":"claude-sonnet-4-20250514"}},
+      {"turn":11,"round":1,"actionA":"hook","actionB":"guard","hpA":72,"hpB":33,"events":[{"type":"miss","source":"A","target":"B"}],
+       "reasoningA":{"thinking":"10 more damage and their kick missed! 33 HP to 72. Going for a hook to try to end it.","strategy":"Go for the finish","confidence":0.75,"model":"gpt-4o"},
+       "reasoningB":{"thinking":"Kick missed and took 10 more. At 33 HP. Only hope is to guard and pray for a miracle counter.","strategy":"Guard — last hope","confidence":0.20,"model":"claude-sonnet-4-20250514"}},
+      {"turn":12,"round":1,"actionA":"guard","actionB":"guard","hpA":72,"hpB":33,"events":[],
+       "reasoningA":{"thinking":"Hook missed their guard. Fine, guard to recover stamina for another try. They're at 33 — just a matter of time.","strategy":"Recovery before finishing blow","confidence":0.78,"model":"gpt-4o"},
+       "reasoningB":{"thinking":"Hook missed! Small mercy. Guard and hope they make mistakes. At 33 to 72, I need a miracle.","strategy":"Pray for mistakes","confidence":0.18,"model":"claude-sonnet-4-20250514"}},
+      {"turn":13,"round":1,"actionA":"strike","actionB":"kick","hpA":55,"hpB":22,"events":[{"type":"damage","source":"A","target":"B","value":11},{"type":"damage","source":"B","target":"A","value":17}],
+       "reasoningA":{"thinking":"Both guarded. Resume attacks — strike to chip them further toward KO range.","strategy":"Methodical finish","confidence":0.80,"model":"gpt-4o"},
+       "reasoningB":{"thinking":"Both guarded. All in on kicks — my one big hit earlier was 15 from a kick. Need to gamble big or go home.","strategy":"Gambling kick — nothing to lose","confidence":0.28,"model":"claude-sonnet-4-20250514"}},
+      {"turn":14,"round":1,"actionA":"kick","actionB":"guard","hpA":55,"hpB":22,"events":[{"type":"miss","source":"A","target":"B"}],
+       "reasoningA":{"thinking":"Traded 11 for 17 — they got a good kick in. But they're at 22, nearly done. Kick to finish.","strategy":"Finishing kick","confidence":0.76,"model":"gpt-4o"},
+       "reasoningB":{"thinking":"Landed 17! At 55 to 22, still way behind. Guard — can't take another hit.","strategy":"Survive one more turn","confidence":0.22,"model":"claude-sonnet-4-20250514"}},
+      {"turn":15,"round":1,"actionA":"guard","actionB":"guard","hpA":55,"hpB":22,"events":[],
+       "reasoningA":{"thinking":"Kick missed. Guard to recover. They're at 22 — next clean hit should do it.","strategy":"Final recovery","confidence":0.82,"model":"gpt-4o"},
+       "reasoningB":{"thinking":"Their kick missed. Brief reprieve. Guard to survive another turn.","strategy":"Survive","confidence":0.15,"model":"claude-sonnet-4-20250514"}},
+      {"turn":16,"round":1,"actionA":"hook","actionB":"hook","hpA":37,"hpB":0,"events":[{"type":"damage","source":"A","target":"B","value":23},{"type":"damage","source":"B","target":"A","value":18},{"type":"ko","source":"A","target":"B"}],
+       "reasoningA":{"thinking":"Both guarded. Time to end this. Hook with full power — they're at 22 HP, a clean hook does 20+. This is the kill shot.","strategy":"KNOCKOUT HOOK","confidence":0.90,"model":"gpt-4o"},
+       "reasoningB":{"thinking":"22 HP. I'm dead if I guard — chip kills. Dead if they connect — any hit kills. Only chance is to attack and hope mine lands first. All-in hook.","strategy":"Last stand — do or die","confidence":0.12,"model":"claude-sonnet-4-20250514"}}
+    ]
+  }
+];
+
+let currentFight = 0, currentTurn = -1, isPlaying = false, playInterval = null, speed = 800;
+let reasoningVisible = true;
+const actionIcons = { strike: '\uD83D\uDC4A', hook: '\uD83E\uDD4A', kick: '\uD83E\uDDB5', guard: '\uD83D\uDEE1\uFE0F', special: '\uD83D\uDCA5', move: '\uD83C\uDFC3' };
+
+// ============= STICK FIGURE RENDERER =============
+const POSES = {
+  idle: (flip) => ({
+    head: [60, 20], neck: [60, 35],
+    shoulderL: [44, 45], shoulderR: [76, 45],
+    elbowL: [38, 65], elbowR: [82, 65],
+    handL: [42, 80], handR: [78, 80],
+    hip: [60, 90],
+    kneeL: [48, 120], kneeR: [72, 120],
+    footL: [44, 150], footR: [76, 150],
+  }),
+  strike: (flip) => ({
+    head: [55, 18], neck: [58, 33],
+    shoulderL: [44, 42], shoulderR: [72, 42],
+    elbowL: [32, 55], elbowR: [88, 38],
+    handL: [28, 45], handR: flip ? [10, 32] : [110, 32],
+    hip: [58, 88],
+    kneeL: [46, 118], kneeR: [70, 115],
+    footL: [40, 150], footR: [78, 150],
+  }),
+  hook: (flip) => ({
+    head: [58, 16], neck: [60, 32],
+    shoulderL: [42, 40], shoulderR: [78, 40],
+    elbowL: [28, 50], elbowR: [94, 34],
+    handL: [24, 40], handR: flip ? [5, 24] : [115, 24],
+    hip: [60, 86],
+    kneeL: [48, 116], kneeR: [72, 116],
+    footL: [42, 150], footR: [80, 150],
+  }),
+  kick: (flip) => ({
+    head: [62, 22], neck: [62, 37],
+    shoulderL: [48, 47], shoulderR: [76, 47],
+    elbowL: [36, 62], elbowR: [88, 62],
+    handL: [32, 52], handR: [92, 52],
+    hip: [62, 90],
+    kneeL: [50, 120], kneeR: flip ? [40, 100] : [84, 100],
+    footL: [46, 150], footR: flip ? [14, 90] : [110, 90],
+  }),
+  guard: (flip) => ({
+    head: [60, 24], neck: [60, 38],
+    shoulderL: [46, 48], shoulderR: [74, 48],
+    elbowL: [40, 58], elbowR: [80, 58],
+    handL: [48, 42], handR: [72, 42],
+    hip: [60, 92],
+    kneeL: [50, 122], kneeR: [70, 122],
+    footL: [46, 152], footR: [74, 152],
+  }),
+  special: (flip) => ({
+    head: [56, 14], neck: [58, 30],
+    shoulderL: [40, 38], shoulderR: [76, 38],
+    elbowL: [24, 42], elbowR: [92, 30],
+    handL: [18, 32], handR: flip ? [0, 18] : [120, 18],
+    hip: [58, 84],
+    kneeL: [44, 112], kneeR: [72, 112],
+    footL: [38, 148], footR: [82, 148],
+  }),
+  hit: (flip) => ({
+    head: [65, 24], neck: [63, 38],
+    shoulderL: [50, 50], shoulderR: [76, 48],
+    elbowL: [44, 68], elbowR: [86, 64],
+    handL: [48, 78], handR: [88, 72],
+    hip: [64, 94],
+    kneeL: [54, 124], kneeR: [74, 120],
+    footL: [50, 152], footR: [78, 148],
+  }),
+  miss: (flip) => ({
+    head: [54, 20], neck: [56, 35],
+    shoulderL: [40, 46], shoulderR: [72, 44],
+    elbowL: [26, 56], elbowR: [88, 44],
+    handL: [20, 48], handR: flip ? [2, 38] : [118, 38],
+    hip: [58, 90],
+    kneeL: [46, 120], kneeR: [70, 118],
+    footL: [42, 150], footR: [76, 150],
+  }),
+  ko: (flip) => ({
+    head: [70, 140], neck: [65, 132],
+    shoulderL: [50, 128], shoulderR: [80, 130],
+    elbowL: [38, 136], elbowR: [92, 138],
+    handL: [30, 144], handR: [100, 146],
+    hip: [60, 140],
+    kneeL: [44, 148], kneeR: [76, 146],
+    footL: [36, 155], footR: [84, 155],
+  }),
+  move: (flip) => ({
+    head: [55, 22], neck: [57, 37],
+    shoulderL: [43, 47], shoulderR: [71, 47],
+    elbowL: [35, 60], elbowR: [83, 58],
+    handL: [30, 55], handR: [88, 52],
+    hip: [57, 90],
+    kneeL: [40, 115], kneeR: [74, 110],
+    footL: [32, 145], footR: [82, 145],
+  }),
+};
+
+function renderStickFigure(container, pose, color, flip, glow = false) {
+  const joints = pose(flip);
+  const c = color === 'red' ? '#ff4444' : '#4488ff';
+  const cDim = color === 'red' ? '#cc2222' : '#2266cc';
+  const glowFilter = glow ? `<filter id="glow-${color}"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>` : '';
+  const filterAttr = glow ? ` filter="url(#glow-${color})"` : '';
+
+  const svg = `<svg class="fighter-svg" viewBox="0 0 120 165" xmlns="http://www.w3.org/2000/svg">
+    <defs>${glowFilter}</defs>
+    <g${filterAttr}>
+      <circle cx="${joints.head[0]}" cy="${joints.head[1]}" r="12" fill="none" stroke="${c}" stroke-width="2.5"/>
+      <line x1="${joints.head[0]}" y1="${joints.head[1]+12}" x2="${joints.neck[0]}" y2="${joints.neck[1]}" stroke="${c}" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="${joints.neck[0]}" y1="${joints.neck[1]}" x2="${joints.hip[0]}" y2="${joints.hip[1]}" stroke="${c}" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="${joints.shoulderL[0]}" y1="${joints.shoulderL[1]}" x2="${joints.elbowL[0]}" y2="${joints.elbowL[1]}" stroke="${c}" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="${joints.elbowL[0]}" y1="${joints.elbowL[1]}" x2="${joints.handL[0]}" y2="${joints.handL[1]}" stroke="${c}" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="${joints.handL[0]}" cy="${joints.handL[1]}" r="4" fill="${c}"/>
+      <line x1="${joints.shoulderR[0]}" y1="${joints.shoulderR[1]}" x2="${joints.elbowR[0]}" y2="${joints.elbowR[1]}" stroke="${c}" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="${joints.elbowR[0]}" y1="${joints.elbowR[1]}" x2="${joints.handR[0]}" y2="${joints.handR[1]}" stroke="${c}" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="${joints.handR[0]}" cy="${joints.handR[1]}" r="4" fill="${c}"/>
+      <line x1="${joints.hip[0]}" y1="${joints.hip[1]}" x2="${joints.kneeL[0]}" y2="${joints.kneeL[1]}" stroke="${cDim}" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="${joints.kneeL[0]}" y1="${joints.kneeL[1]}" x2="${joints.footL[0]}" y2="${joints.footL[1]}" stroke="${cDim}" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="${joints.footL[0]}" cy="${joints.footL[1]}" r="3" fill="${cDim}"/>
+      <line x1="${joints.hip[0]}" y1="${joints.hip[1]}" x2="${joints.kneeR[0]}" y2="${joints.kneeR[1]}" stroke="${cDim}" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="${joints.kneeR[0]}" y1="${joints.kneeR[1]}" x2="${joints.footR[0]}" y2="${joints.footR[1]}" stroke="${cDim}" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="${joints.footR[0]}" cy="${joints.footR[1]}" r="3" fill="${cDim}"/>
+    </g>
+  </svg>`;
+  container.innerHTML = svg;
+}
+
+function getPose(action, wasHit, wasMiss, wasKO) {
+  if (wasKO) return POSES.ko;
+  if (wasHit) return POSES.hit;
+  const isAttack = ['strike','hook','kick','special'].includes(action);
+  if (isAttack && wasMiss) return POSES.miss;
+  if (POSES[action]) return POSES[action];
+  return POSES.idle;
+}
+
+// ============= EFFECTS =============
+function spawnDmgPopup(ring, side, value) {
+  const el = document.createElement('div');
+  el.className = 'dmg-popup';
+  el.textContent = '-' + value;
+  el.style.color = '#ff4444';
+  el.style.left = side === 'A' ? '28%' : '64%';
+  el.style.top = '20%';
+  ring.appendChild(el);
+  setTimeout(() => el.remove(), 800);
+}
+
+function spawnImpactBurst(ring, side) {
+  const el = document.createElement('div');
+  el.className = 'impact-burst';
+  el.style.left = side === 'A' ? '26%' : '62%';
+  el.style.top = '30%';
+  el.innerHTML = `<svg width="60" height="60" viewBox="0 0 60 60"><polygon points="30,2 36,22 56,22 40,34 46,54 30,42 14,54 20,34 4,22 24,22" fill="none" stroke="#ffcc00" stroke-width="2" opacity="0.8"/></svg>`;
+  ring.appendChild(el);
+  setTimeout(() => el.remove(), 400);
+}
+
+function spawnMissText(ring, side) {
+  const el = document.createElement('div');
+  el.className = 'miss-text';
+  el.textContent = 'MISS';
+  el.style.left = side === 'A' ? '30%' : '66%';
+  el.style.top = '35%';
+  ring.appendChild(el);
+  setTimeout(() => el.remove(), 600);
+}
+
+function spawnBlockFlash(ring, side) {
+  const el = document.createElement('div');
+  el.className = 'block-flash';
+  el.style.left = side === 'A' ? '27%' : '63%';
+  el.style.top = '25%';
+  ring.appendChild(el);
+  setTimeout(() => el.remove(), 400);
+}
+
+function spawnKOText(ring) {
+  const el = document.createElement('div');
+  el.className = 'ko-flash';
+  el.textContent = 'K.O.';
+  el.style.color = '#ff3333';
+  el.style.textShadow = '0 0 30px rgba(255,0,0,0.6)';
+  ring.appendChild(el);
+  setTimeout(() => { if (el.parentNode) el.remove(); }, 2000);
+}
+
+// ============= REASONING PANEL =============
+function updateReasoning(turn) {
+  const f = FIGHTS[currentFight];
+  const rA = turn.reasoningA;
+  const rB = turn.reasoningB;
+
+  // Update names
+  document.getElementById('reasoningNameA').textContent = f.nameA;
+  document.getElementById('reasoningNameB').textContent = f.nameB;
+
+  // Update model tags
+  document.getElementById('reasoningModelA').textContent = rA?.model || f.modelA || 'AI Agent';
+  document.getElementById('reasoningModelB').textContent = rB?.model || f.modelB || 'AI Agent';
+
+  // Update thinking text
+  const thinkA = document.getElementById('reasoningThinkingA');
+  const thinkB = document.getElementById('reasoningThinkingB');
+
+  if (rA?.thinking) {
+    thinkA.textContent = '"' + rA.thinking + '"';
+    thinkA.className = 'reasoning-thinking';
+  } else {
+    thinkA.textContent = 'No reasoning data available';
+    thinkA.className = 'reasoning-thinking empty';
+  }
+
+  if (rB?.thinking) {
+    thinkB.textContent = '"' + rB.thinking + '"';
+    thinkB.className = 'reasoning-thinking';
+  } else {
+    thinkB.textContent = 'No reasoning data available';
+    thinkB.className = 'reasoning-thinking empty';
+  }
+
+  // Update strategy
+  document.getElementById('reasoningStrategyA').textContent = rA?.strategy || '--';
+  document.getElementById('reasoningStrategyB').textContent = rB?.strategy || '--';
+
+  // Update confidence bars
+  updateConfidence('A', rA?.confidence);
+  updateConfidence('B', rB?.confidence);
+
+  // Activate cards
+  document.getElementById('reasoningCardA').classList.add('active');
+  document.getElementById('reasoningCardB').classList.add('active');
+}
+
+function updateConfidence(side, confidence) {
+  const bar = document.getElementById('confidenceBar' + side);
+  const val = document.getElementById('confidenceVal' + side);
+
+  if (confidence === undefined || confidence === null) {
+    bar.style.width = '0%';
+    val.textContent = '--';
+    val.className = 'confidence-value';
+    bar.className = 'confidence-bar-fill';
+    return;
+  }
+
+  const pct = Math.round(confidence * 100);
+  bar.style.width = pct + '%';
+  val.textContent = pct + '%';
+
+  let level;
+  if (confidence >= 0.65) level = 'high';
+  else if (confidence >= 0.35) level = 'med';
+  else level = 'low';
+
+  bar.className = 'confidence-bar-fill ' + level;
+  val.className = 'confidence-value ' + level;
+}
+
+function resetReasoning() {
+  ['A', 'B'].forEach(side => {
+    const think = document.getElementById('reasoningThinking' + side);
+    think.textContent = 'Waiting for match to start...';
+    think.className = 'reasoning-thinking empty';
+    document.getElementById('reasoningStrategy' + side).textContent = '--';
+    updateConfidence(side, null);
+    document.getElementById('reasoningCard' + side).classList.remove('active');
+  });
+}
+
+function toggleReasoning() {
+  const section = document.getElementById('reasoningSection');
+  const btn = document.getElementById('reasoningToggle');
+  reasoningVisible = !reasoningVisible;
+  if (reasoningVisible) {
+    section.classList.remove('collapsed');
+    btn.textContent = 'Hide';
+  } else {
+    section.classList.add('collapsed');
+    btn.textContent = 'Show';
+  }
+}
+
+// ============= MAIN LOGIC =============
+function init() {
+  const sel = document.getElementById('fightSelector');
+  FIGHTS.forEach((f, i) => {
+    const tab = document.createElement('div');
+    tab.className = 'fight-tab' + (i === 0 ? ' active' : '');
+    tab.textContent = `${f.nameA} vs ${f.nameB}`;
+    tab.onclick = () => selectFight(i);
+    sel.appendChild(tab);
+  });
+  selectFight(0);
+}
+
+function selectFight(idx) {
+  currentFight = idx; currentTurn = -1; stopPlay();
+  document.querySelectorAll('.fight-tab').forEach((t, i) => t.className = 'fight-tab' + (i === idx ? ' active' : ''));
+  const f = FIGHTS[idx];
+  document.getElementById('nameA').textContent = f.nameA;
+  document.getElementById('nameB').textContent = f.nameB;
+  document.getElementById('styleA').textContent = f.styleA + ' style';
+  document.getElementById('styleB').textContent = f.styleB + ' style';
+  // Update model tags
+  document.getElementById('reasoningModelA').textContent = f.modelA || 'AI Agent';
+  document.getElementById('reasoningModelB').textContent = f.modelB || 'AI Agent';
+  resetUI();
+}
+
+function resetUI() {
+  updateHP(100, 100);
+  document.getElementById('turnNum').textContent = '0';
+  document.getElementById('roundNum').textContent = '1';
+  document.getElementById('actionA').innerHTML = '--';
+  document.getElementById('actionB').innerHTML = '--';
+  document.getElementById('eventsFeed').innerHTML = '';
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('progressLeft').textContent = 'Turn 0';
+  document.getElementById('progressRight').textContent = `of ${FIGHTS[currentFight].turns.length}`;
+  document.getElementById('resultOverlay').classList.remove('show');
+  const cA = document.getElementById('containerA');
+  const cB = document.getElementById('containerB');
+  cA.className = 'fighter-container left';
+  cB.className = 'fighter-container right';
+  renderStickFigure(cA, POSES.idle, 'red', false);
+  renderStickFigure(cB, POSES.idle, 'blue', true);
+  document.querySelectorAll('.dmg-popup, .impact-burst, .miss-text, .block-flash, .ko-flash').forEach(e => e.remove());
+  resetReasoning();
+}
+
+function updateHP(hpA, hpB) {
+  document.getElementById('hpValA').textContent = Math.max(0, hpA);
+  document.getElementById('hpValB').textContent = Math.max(0, hpB);
+  const barA = document.getElementById('hpBarA'), barB = document.getElementById('hpBarB');
+  barA.style.width = Math.max(0, hpA) + '%';
+  barB.style.width = Math.max(0, hpB) + '%';
+  barA.className = 'hp-bar-fill red' + (hpA <= 20 ? ' critical' : '');
+  barB.className = 'hp-bar-fill blue' + (hpB <= 20 ? ' critical' : '');
+}
+
+function renderTurn(idx) {
+  const f = FIGHTS[currentFight];
+  if (idx < 0 || idx >= f.turns.length) return;
+  const t = f.turns[idx];
+  currentTurn = idx;
+
+  document.getElementById('turnNum').textContent = t.turn;
+  document.getElementById('roundNum').textContent = t.round;
+  updateHP(t.hpA, t.hpB);
+  document.getElementById('actionA').innerHTML = `${actionIcons[t.actionA] || ''} ${t.actionA}`;
+  document.getElementById('actionB').innerHTML = `${actionIcons[t.actionB] || ''} ${t.actionB}`;
+  const pct = ((idx + 1) / f.turns.length * 100).toFixed(0);
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressLeft').textContent = `Turn ${t.turn}`;
+
+  // Update reasoning panel
+  updateReasoning(t);
+
+  const ring = document.getElementById('arenaRing');
+  const cA = document.getElementById('containerA');
+  const cB = document.getElementById('containerB');
+
+  const aHit = t.events.some(e => e.type === 'damage' && e.target === 'A');
+  const bHit = t.events.some(e => e.type === 'damage' && e.target === 'B');
+  const aMissed = t.events.some(e => e.type === 'miss' && e.source === 'A');
+  const bMissed = t.events.some(e => e.type === 'miss' && e.source === 'B');
+  const koA = t.events.some(e => e.type === 'ko' && e.target === 'A');
+  const koB = t.events.some(e => e.type === 'ko' && e.target === 'B');
+
+  const aIsAttack = ['strike','hook','kick','special'].includes(t.actionA);
+  const bIsAttack = ['strike','hook','kick','special'].includes(t.actionB);
+
+  let finalPoseA, finalPoseB;
+
+  if (koA) finalPoseA = POSES.ko;
+  else if (aIsAttack && bHit) finalPoseA = POSES[t.actionA] || POSES.strike;
+  else if (aIsAttack && aMissed) finalPoseA = POSES.miss;
+  else if (aHit) finalPoseA = POSES.hit;
+  else finalPoseA = POSES[t.actionA] || POSES.idle;
+
+  if (koB) finalPoseB = POSES.ko;
+  else if (bIsAttack && aHit) finalPoseB = POSES[t.actionB] || POSES.strike;
+  else if (bIsAttack && bMissed) finalPoseB = POSES.miss;
+  else if (bHit) finalPoseB = POSES.hit;
+  else finalPoseB = POSES[t.actionB] || POSES.idle;
+
+  renderStickFigure(cA, finalPoseA, 'red', false, aIsAttack && bHit);
+  renderStickFigure(cB, finalPoseB, 'blue', true, bIsAttack && aHit);
+
+  t.events.forEach(e => {
+    if (e.type === 'damage') {
+      spawnDmgPopup(ring, e.target, e.value);
+      spawnImpactBurst(ring, e.target);
+    }
+    if (e.type === 'miss') spawnMissText(ring, e.source);
+    if (e.type === 'block') spawnBlockFlash(ring, e.source);
+    if (e.type === 'ko') spawnKOText(ring);
+  });
+
+  const feed = document.getElementById('eventsFeed');
+  t.events.forEach(e => {
+    const row = document.createElement('div');
+    row.className = 'event-row' + (e.type === 'ko' ? ' ko-event' : '');
+    let icon = '', text = '';
+    const srcName = e.source === 'A' ? f.nameA : f.nameB;
+    const tgtName = e.target === 'A' ? f.nameA : f.nameB;
+    switch (e.type) {
+      case 'damage': icon = '\uD83D\uDCA2'; text = `<span>${srcName}</span> hits <span>${tgtName}</span> for <span class="dmg-value">${e.value} DMG</span>`; break;
+      case 'miss': icon = '\uD83D\uDCA8'; text = `<span>${srcName}</span> <span style="color:#555">misses</span>`; break;
+      case 'block': icon = '\uD83D\uDEE1\uFE0F'; text = `<span>${tgtName}</span> <span class="block-value">blocks!</span>`; break;
+      case 'ko': icon = '\uD83C\uDFC6'; text = `<span style="color:#ff3333;font-weight:800">KO! ${tgtName} is down!</span>`; break;
+      case 'tko': icon = '\uD83C\uDFC6'; text = `<span style="color:#ff8800;font-weight:800">TKO! ${tgtName} stopped!</span>`; break;
+      case 'knockdown': icon = '\u2B07\uFE0F'; text = `<span style="color:#ffcc00">${tgtName} knocked down! (${e.value})</span>`; break;
+      case 'foul': icon = '\uD83D\uDFE1'; text = `<span style="color:#ddaa00">${srcName} fouled!</span>`; break;
+      default: icon = '\u2022'; text = `${e.type}`;
+    }
+    row.innerHTML = `<span class="turn-badge">T${t.turn}</span><span class="event-icon">${icon}</span><span class="event-text">${text}</span>`;
+    feed.insertBefore(row, feed.firstChild);
+  });
+
+  if (idx === f.turns.length - 1) setTimeout(() => showResult(f), 800);
+}
+
+function showResult(f) {
+  const overlay = document.getElementById('resultOverlay'), text = document.getElementById('resultText'), method = document.getElementById('resultMethod');
+  if (f.result.winner === 'draw') { text.textContent = 'DOUBLE KO!'; text.style.color = '#888'; }
+  else { const w = f.result.winner === 'A' ? f.nameA : f.nameB; text.textContent = w + ' WINS!'; text.style.color = f.result.winner === 'A' ? '#ff4444' : '#4488ff'; }
+  const m = f.result.method.toUpperCase();
+  method.textContent = m + ' \u2014 Round ' + f.result.round;
+  method.className = 'result-method ' + (f.result.method === 'ko' ? 'ko' : f.result.method);
+  overlay.classList.add('show');
+}
+
+function nextTurn() {
+  const f = FIGHTS[currentFight];
+  if (currentTurn < f.turns.length - 1) renderTurn(currentTurn + 1);
+  else stopPlay();
+}
+
+function prevTurn() {
+  if (currentTurn > 0) {
+    const target = currentTurn - 1;
+    resetUI();
+    document.getElementById('eventsFeed').innerHTML = '';
+    for (let i = 0; i <= target; i++) {
+      const f = FIGHTS[currentFight], t = f.turns[i];
+      currentTurn = i;
+      updateHP(t.hpA, t.hpB);
+      document.getElementById('turnNum').textContent = t.turn;
+      document.getElementById('actionA').innerHTML = `${actionIcons[t.actionA] || ''} ${t.actionA}`;
+      document.getElementById('actionB').innerHTML = `${actionIcons[t.actionB] || ''} ${t.actionB}`;
+      document.getElementById('progressFill').style.width = ((i + 1) / FIGHTS[currentFight].turns.length * 100).toFixed(0) + '%';
+      document.getElementById('progressLeft').textContent = `Turn ${t.turn}`;
+    }
+    const f = FIGHTS[currentFight], t = f.turns[target];
+    const cA = document.getElementById('containerA'), cB = document.getElementById('containerB');
+    renderStickFigure(cA, POSES[t.actionA] || POSES.idle, 'red', false);
+    renderStickFigure(cB, POSES[t.actionB] || POSES.idle, 'blue', true);
+    updateReasoning(t);
+  }
+}
+
+function togglePlay() {
+  if (isPlaying) { stopPlay(); return; }
+  isPlaying = true;
+  document.getElementById('btnPlay').innerHTML = '&#9646;&#9646; Pause';
+  document.getElementById('resultOverlay').classList.remove('show');
+  playInterval = setInterval(() => { nextTurn(); if (currentTurn >= FIGHTS[currentFight].turns.length - 1) stopPlay(); }, speed);
+}
+
+function stopPlay() {
+  isPlaying = false;
+  if (playInterval) clearInterval(playInterval);
+  playInterval = null;
+  document.getElementById('btnPlay').innerHTML = '&#9654; Play';
+}
+
+function resetMatch() { stopPlay(); currentTurn = -1; resetUI(); }
+
+function updateSpeed() {
+  const val = document.getElementById('speedSlider').value;
+  const speeds = [2000, 1500, 1200, 1000, 800, 600, 400, 250, 150, 80];
+  speed = speeds[val - 1] || 800;
+  const labels = ['0.3x', '0.5x', '0.7x', '0.8x', '1x', '1.3x', '1.7x', '2.5x', '4x', '8x'];
+  document.getElementById('speedLabel').textContent = labels[val - 1] || '1x';
+  if (isPlaying) { clearInterval(playInterval); playInterval = setInterval(() => { nextTurn(); if (currentTurn >= FIGHTS[currentFight].turns.length - 1) stopPlay(); }, speed); }
+}
+
+init();
+</script>
+</body>
+</html>
