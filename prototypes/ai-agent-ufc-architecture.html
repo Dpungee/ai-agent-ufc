@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Agent UFC - System Architecture</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #0a0a0f; color: #e0e0e0; overflow: hidden; }
+
+  svg { display: block; }
+
+  .container { width: 100vw; height: 100vh; position: relative; }
+
+  /* Header */
+  .header { position: absolute; top: 0; left: 0; right: 0; padding: 20px 32px; display: flex; justify-content: space-between; align-items: center; z-index: 10; background: linear-gradient(to bottom, rgba(10,10,15,0.95), transparent); }
+  .header h1 { font-size: 20px; font-weight: 700; color: #fff; letter-spacing: -0.5px; }
+  .header h1 span { color: #f43f5e; }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: #888; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+
+  /* Info panel */
+  .info-panel { position: absolute; bottom: 24px; left: 32px; right: 32px; background: rgba(20,20,30,0.92); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px 24px; z-index: 10; backdrop-filter: blur(12px); transition: opacity 0.3s; }
+  .info-panel h2 { font-size: 15px; font-weight: 600; color: #fff; margin-bottom: 6px; }
+  .info-panel p { font-size: 13px; color: #aaa; line-height: 1.5; }
+  .info-panel .tech { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .info-panel .tech span { background: rgba(244,63,94,0.15); color: #f43f5e; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 500; }
+
+  /* Tabs */
+  .view-tabs { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; background: rgba(30,30,45,0.8); padding: 4px; border-radius: 10px; z-index: 11; border: 1px solid rgba(255,255,255,0.06); }
+  .view-tab { padding: 6px 16px; font-size: 12px; font-weight: 500; color: #888; background: none; border: none; border-radius: 7px; cursor: pointer; transition: all 0.2s; }
+  .view-tab.active { background: rgba(244,63,94,0.2); color: #f43f5e; }
+  .view-tab:hover:not(.active) { color: #bbb; }
+</style>
+</head>
+<body>
+
+<div class="container" id="app">
+  <div class="header">
+    <h1>AI Agent <span>UFC</span> — System Architecture</h1>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div> Frontend</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6"></div> API / Services</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f43f5e"></div> Engine / Workers</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div> Data / Storage</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div> External / AI</div>
+    </div>
+  </div>
+
+  <div class="view-tabs">
+    <button class="view-tab active" onclick="showView('system')">Full System</button>
+    <button class="view-tab" onclick="showView('match')">Match Flow</button>
+    <button class="view-tab" onclick="showView('data')">Data Model</button>
+  </div>
+
+  <svg id="diagram" width="100%" height="100%"></svg>
+
+  <div class="info-panel" id="infoPanel">
+    <h2>AI Agent UFC Platform</h2>
+    <p>Click any component to learn more about it. This diagram shows the MVP architecture: a Next.js frontend, Node/TS API, Redis-backed matchmaking queue, a deterministic match engine, and PostgreSQL for persistence.</p>
+    <div class="tech">
+      <span>Next.js</span><span>TypeScript</span><span>PostgreSQL</span><span>Redis</span><span>WebSockets</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const svg = document.getElementById('diagram');
+const infoPanel = document.getElementById('infoPanel');
+let currentView = 'system';
+let W, H;
+
+function resize() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+}
+window.addEventListener('resize', () => { resize(); render(); });
+resize();
+
+// Component definitions
+const views = {
+  system: {
+    nodes: [
+      { id: 'browser', label: 'Browser Client', sub: 'React / Next.js', x: 0.15, y: 0.18, color: '#3b82f6', icon: 'M4 4h16v12H4V4zm2 14h12', info: { title: 'Browser Client (Next.js)', desc: 'The spectator and player-facing web app. Shows the lobby, agent builder, live broadcast viewer, leaderboards, and replay pages. Connects via WebSocket for live match updates and REST for everything else.', tech: ['Next.js', 'TypeScript', 'React', 'WebSocket Client'] } },
+      { id: 'api', label: 'API Server', sub: 'Node / FastAPI', x: 0.5, y: 0.18, color: '#8b5cf6', icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5', info: { title: 'API Server', desc: 'Handles authentication, agent CRUD, matchmaking requests, ratings updates, and serves replay data. Pushes match events to clients via WebSocket. This is your central coordinator.', tech: ['Node.js + TypeScript', 'or FastAPI (Python)', 'REST + WebSocket', 'JWT Auth'] } },
+      { id: 'admin', label: 'Admin Panel', sub: 'Moderation Tools', x: 0.85, y: 0.18, color: '#3b82f6', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', info: { title: 'Admin Panel', desc: 'Internal tool for moderators. Ban agents, review flagged prompts, view match logs, trigger tournaments, and monitor system health. Can be a simple internal Next.js route or separate app.', tech: ['Next.js (internal routes)', 'Role-based access', 'Audit logging'] } },
+      { id: 'queue', label: 'Match Queue', sub: 'Redis Pub/Sub', x: 0.28, y: 0.45, color: '#f43f5e', icon: 'M4 6h16M4 10h16M4 14h16M4 18h16', info: { title: 'Match Queue (Redis)', desc: 'Manages the matchmaking queue. When two agents with compatible ratings are waiting, it pairs them and dispatches a match to an available engine worker. Also handles pub/sub for live match state streaming to connected clients.', tech: ['Redis', 'Bull or BullMQ', 'Pub/Sub channels', 'Sorted sets for ranking'] } },
+      { id: 'engine', label: 'Match Engine', sub: 'Deterministic Workers', x: 0.5, y: 0.45, color: '#f43f5e', icon: 'M13 10V3L4 14h7v7l9-11h-7z', info: { title: 'Match Engine (Workers)', desc: 'The heart of the platform. Runs fights as deterministic simulations: takes a seed + agent actions, applies game rules, and produces a full event log. Stateless — can scale horizontally. Each worker handles one match at a time.', tech: ['TypeScript', 'Deterministic RNG (seeded)', 'JSON action schema', 'Horizontally scalable'] } },
+      { id: 'agentrt', label: 'Agent Runtime', sub: 'LLM / Sandbox', x: 0.72, y: 0.45, color: '#f59e0b', icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', info: { title: 'Agent Runtime Service', desc: 'Translates game state into agent decisions. For MVP, this calls an LLM with the agent\'s prompt + current state and parses the response into a valid action. Later phases add sandboxed code execution and external API agents.', tech: ['OpenAI / Anthropic API', 'Prompt templates', 'JSON schema validation', 'Sandbox (Phase 2+)'] } },
+      { id: 'postgres', label: 'PostgreSQL', sub: 'Users, Agents, Matches', x: 0.22, y: 0.72, color: '#10b981', icon: 'M4 7v10c0 2 3.6 3.6 8 3.6S20 19 20 17V7M4 7c0 2 3.6 3.6 8 3.6S20 9 20 7M4 7c0-2 3.6-3.6 8-3.6S20 5 20 7', info: { title: 'PostgreSQL Database', desc: 'Stores all persistent data: user accounts, agent definitions (prompts + params), match records, turn-by-turn logs, ratings history, and tournament brackets. Use migrations (Prisma or Drizzle) to manage schema.', tech: ['PostgreSQL 15+', 'Prisma or Drizzle ORM', 'Migrations', 'Indexed on rating, user_id'] } },
+      { id: 's3', label: 'Object Storage', sub: 'Replays & Media', x: 0.5, y: 0.72, color: '#10b981', icon: 'M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4', info: { title: 'Object Storage (S3)', desc: 'Stores replay JSON files, highlight clips, and agent avatars. Replays are small (just seed + actions), so storage costs are minimal. Use signed URLs for sharing replay links publicly.', tech: ['S3 / R2 / MinIO', 'Signed URLs', 'Replay JSON', 'CDN for assets'] } },
+      { id: 'llm', label: 'LLM Provider', sub: 'OpenAI / Anthropic', x: 0.78, y: 0.72, color: '#f59e0b', icon: 'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4', info: { title: 'LLM Provider (External)', desc: 'For prompt-based agents, the Agent Runtime calls an LLM API with the agent\'s personality prompt + current game state. The LLM returns a JSON action which gets validated. Budget ~$0.001-0.01 per turn depending on model.', tech: ['OpenAI GPT-4o-mini', 'Anthropic Claude Haiku', 'Structured output mode', '~250ms per call'] } },
+    ],
+    edges: [
+      { from: 'browser', to: 'api', label: 'REST + WS', dash: false },
+      { from: 'admin', to: 'api', label: 'REST', dash: false },
+      { from: 'api', to: 'queue', label: 'Enqueue match', dash: false },
+      { from: 'queue', to: 'engine', label: 'Dispatch', dash: false },
+      { from: 'engine', to: 'agentrt', label: 'State → Action', dash: false },
+      { from: 'engine', to: 'queue', label: 'Stream events', dash: true },
+      { from: 'api', to: 'postgres', label: 'Read/Write', dash: false },
+      { from: 'engine', to: 's3', label: 'Store replay', dash: true },
+      { from: 'engine', to: 'postgres', label: 'Save results', dash: true },
+      { from: 'agentrt', to: 'llm', label: 'API call', dash: false },
+    ]
+  },
+  match: {
+    nodes: [
+      { id: 'start', label: '1. Match Created', sub: 'Queue pairs agents', x: 0.12, y: 0.22, color: '#3b82f6', icon: 'M12 4v16m8-8H4', info: { title: 'Step 1: Match Created', desc: 'Two agents with compatible ratings are paired from the queue. A match record is created with a random seed, engine version, and initial game state. Both clients are notified via WebSocket.', tech: ['Redis queue pop', 'Seed generation', 'Match record in PostgreSQL'] } },
+      { id: 'state', label: '2. Send State', sub: 'Engine → Agents', x: 0.35, y: 0.22, color: '#8b5cf6', icon: 'M13 5l7 7-7 7M5 5l7 7-7 7', info: { title: 'Step 2: Send State Snapshot', desc: 'Each turn, the engine sends both agents a state snapshot: their own full stats, estimated opponent stats, arena info, and recent history. Same structure, same timing — fairness is enforced here.', tech: ['JSON state schema', 'Symmetric information', '250ms time budget starts'] } },
+      { id: 'decide', label: '3. Agent Decides', sub: 'LLM / Code → Action', x: 0.58, y: 0.22, color: '#f59e0b', icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', info: { title: 'Step 3: Agent Decides', desc: 'The Agent Runtime sends the state to the agent (LLM call for MVP). The agent returns a JSON action like { type: "strike", variant: "jab", target: "head", power: 0.7 }. If it times out, a default guard action is used + stamina penalty.', tech: ['decide_action(state) → action', 'JSON schema validation', 'Timeout: 250ms default', 'Fallback: guard action'] } },
+      { id: 'validate', label: '4. Validate', sub: 'Check rules + limits', x: 0.82, y: 0.22, color: '#f43f5e', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z', info: { title: 'Step 4: Validate Action', desc: 'The engine checks every action against strict rules: valid action type? Correct enum values? Numeric values within range? Enough stamina? Off cooldown? Invalid actions are rejected and replaced with a default + foul penalty.', tech: ['JSON schema check', 'Clamp numerics', 'Stamina/cooldown check', 'Foul tracking'] } },
+      { id: 'apply', label: '5. Apply Rules', sub: 'Resolve combat', x: 0.18, y: 0.55, color: '#f43f5e', icon: 'M13 10V3L4 14h7v7l9-11h-7z', info: { title: 'Step 5: Apply Game Rules', desc: 'The deterministic engine resolves both actions simultaneously: calculate damage, apply guards, update positions, drain stamina, check for knockdowns. All using the seeded RNG so replays are exact.', tech: ['Deterministic resolution', 'Seeded RNG only', 'Damage formulas', 'Status effects'] } },
+      { id: 'record', label: '6. Record Turn', sub: 'Log events + stream', x: 0.42, y: 0.55, color: '#10b981', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', info: { title: 'Step 6: Record & Stream', desc: 'The validated action and resulting events (damage dealt, position changes, knockdowns) are logged. The turn data is streamed to connected spectators via WebSocket/Redis pub-sub. This is what makes live viewing work.', tech: ['Turn log (JSON)', 'State hash for integrity', 'WebSocket broadcast', 'Redis pub/sub'] } },
+      { id: 'check', label: '7. Check End?', sub: 'KO / TKO / Decision', x: 0.65, y: 0.55, color: '#8b5cf6', icon: 'M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', info: { title: 'Step 7: Check End Conditions', desc: 'After each turn: Is HP at 0? (KO) Too many unanswered hits? (TKO) Repeated timeouts? (DQ) Max rounds reached? (Decision by scorecard). If not over, loop back to Step 2 for the next turn.', tech: ['KO: HP ≤ 0', 'TKO: hit threshold', 'DQ: foul limit', 'Decision: scorecard algo'] } },
+      { id: 'finish', label: '8. Finalize', sub: 'Ratings + Replay', x: 0.88, y: 0.55, color: '#10b981', icon: 'M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z', info: { title: 'Step 8: Finalize Match', desc: 'Match is over. Update Elo ratings for both agents. Store the complete replay (seed + actions + engine version) to S3. Update match record in PostgreSQL. Notify clients of the final result. Generate shareable replay link.', tech: ['Elo rating update', 'Replay → S3', 'Match record updated', 'Share link generated'] } },
+    ],
+    edges: [
+      { from: 'start', to: 'state', label: '', dash: false },
+      { from: 'state', to: 'decide', label: '', dash: false },
+      { from: 'decide', to: 'validate', label: '', dash: false },
+      { from: 'validate', to: 'apply', label: '', dash: false },
+      { from: 'apply', to: 'record', label: '', dash: false },
+      { from: 'record', to: 'check', label: '', dash: false },
+      { from: 'check', to: 'finish', label: 'Yes: end', dash: false },
+      { from: 'check', to: 'state', label: 'No: next turn', dash: true },
+    ]
+  },
+  data: {
+    nodes: [
+      { id: 'users', label: 'users', sub: 'id, email, handle', x: 0.15, y: 0.2, color: '#3b82f6', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', info: { title: 'users table', desc: 'Core user accounts. Each user can own multiple agents. Stores auth credentials, display handle, profile info, and creation date. Keep it minimal for MVP.', tech: ['id (UUID, PK)', 'email (unique)', 'handle (unique)', 'created_at, updated_at'] } },
+      { id: 'agents', label: 'agents', sub: 'prompt, params, version', x: 0.5, y: 0.2, color: '#8b5cf6', icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', info: { title: 'agents table', desc: 'Agent definitions are immutable per version. When a user edits their agent, a new version row is created. This ensures replays always reference the exact agent config used in that match.', tech: ['id, user_id (FK)', 'name, style_template', 'prompt (text), params_json', 'version (int), is_active'] } },
+      { id: 'matches', label: 'matches', sub: 'status, seed, winner', x: 0.85, y: 0.2, color: '#f43f5e', icon: 'M13 10V3L4 14h7v7l9-11h-7z', info: { title: 'matches table', desc: 'One row per match. Stores the random seed and engine version so the match can be perfectly replayed. Status tracks the match lifecycle (queued → in_progress → completed). Winner is set at finalization.', tech: ['id, created_at, status', 'engine_version, seed', 'division, mode', 'winner_agent_id (FK)'] } },
+      { id: 'participants', label: 'match_participants', sub: 'agent_id, side, ratings', x: 0.28, y: 0.5, color: '#f43f5e', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z', info: { title: 'match_participants table', desc: 'Links agents to matches. Stores which side they fought on (A or B) and their Elo rating before and after the match. This is your join table and also your historical rating trail.', tech: ['match_id (FK), agent_id (FK)', 'side (A/B)', 'rating_before, rating_after', 'Composite PK'] } },
+      { id: 'turns', label: 'turns', sub: 'actions, events per turn', x: 0.58, y: 0.5, color: '#10b981', icon: 'M4 6h16M4 10h16M4 14h16M4 18h16', info: { title: 'turns table', desc: 'The granular fight log. One row per turn per match. Stores both agents\' validated actions and the resulting events (damage, movement, knockdowns). State hash enables integrity verification. This is what powers replays.', tech: ['match_id (FK), turn_number', 'state_hash', 'action_json_a, action_json_b', 'events_json'] } },
+      { id: 'ratings', label: 'ratings', sub: 'Elo per agent per mode', x: 0.85, y: 0.5, color: '#f59e0b', icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6', info: { title: 'ratings table', desc: 'Current Elo rating for each agent in each mode/division. Separate from match_participants (which stores historical snapshots). Includes uncertainty value for potential Glicko-2 upgrade later.', tech: ['agent_id (FK), mode', 'rating (int, default 1200)', 'uncertainty (float)', 'updated_at'] } },
+    ],
+    edges: [
+      { from: 'users', to: 'agents', label: '1 → many', dash: false },
+      { from: 'agents', to: 'participants', label: '1 → many', dash: false },
+      { from: 'matches', to: 'participants', label: '1 → 2', dash: false },
+      { from: 'matches', to: 'turns', label: '1 → many', dash: false },
+      { from: 'agents', to: 'ratings', label: '1 → per mode', dash: true },
+    ]
+  }
+};
+
+function getNodeCenter(node) {
+  const px = node.x * W;
+  const py = node.y * H;
+  return { x: px, y: py };
+}
+
+function showView(view) {
+  currentView = view;
+  document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector(`.view-tab[onclick="showView('${view}')"]`).classList.add('active');
+
+  const defaultInfo = {
+    system: { title: 'AI Agent UFC Platform', desc: 'Click any component to learn more. This shows the MVP architecture: Next.js frontend, Node/TS API, Redis matchmaking, deterministic match engine, and PostgreSQL.', tech: ['Next.js', 'TypeScript', 'PostgreSQL', 'Redis', 'WebSockets'] },
+    match: { title: 'Match Flow (Per-Turn Loop)', desc: 'Click any step to see details. Each fight runs as a loop: send state → agent decides → validate → apply rules → record → check if match is over. Repeat until KO, TKO, decision, or DQ.', tech: ['Deterministic', '~4 turns/sec', '250ms time budget', 'JSON actions'] },
+    data: { title: 'Data Model (PostgreSQL)', desc: 'Click any table to see its columns and purpose. The schema is designed for immutable agent versions, full replay capability, and per-mode ratings. All relationships shown.', tech: ['PostgreSQL', '6 core tables', 'Immutable versions', 'Full audit trail'] },
+  };
+
+  const info = defaultInfo[view];
+  infoPanel.querySelector('h2').textContent = info.title;
+  infoPanel.querySelector('p').textContent = info.desc;
+  infoPanel.querySelector('.tech').innerHTML = info.tech.map(t => `<span>${t}</span>`).join('');
+
+  render();
+}
+
+function render() {
+  const view = views[currentView];
+  let html = '';
+
+  // Defs
+  html += `<defs>
+    <marker id="arrow" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#555"/>
+    </marker>
+    <marker id="arrowDash" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#444"/>
+    </marker>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>`;
+
+  // Grid pattern background
+  html += `<rect width="100%" height="100%" fill="#0a0a0f"/>`;
+  for (let x = 0; x < W; x += 60) {
+    html += `<line x1="${x}" y1="0" x2="${x}" y2="${H}" stroke="rgba(255,255,255,0.02)" stroke-width="1"/>`;
+  }
+  for (let y = 0; y < H; y += 60) {
+    html += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="rgba(255,255,255,0.02)" stroke-width="1"/>`;
+  }
+
+  // Edges
+  view.edges.forEach(edge => {
+    const fromNode = view.nodes.find(n => n.id === edge.from);
+    const toNode = view.nodes.find(n => n.id === edge.to);
+    const f = getNodeCenter(fromNode);
+    const t = getNodeCenter(toNode);
+
+    const dx = t.x - f.x;
+    const dy = t.y - f.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const nx = dx / dist;
+    const ny = dy / dist;
+
+    const startX = f.x + nx * 60;
+    const startY = f.y + ny * 35;
+    const endX = t.x - nx * 60;
+    const endY = t.y - ny * 35;
+
+    const midX = (startX + endX) / 2;
+    const midY = (startY + endY) / 2;
+
+    // Curved path
+    const perpX = -ny * 30;
+    const perpY = nx * 30;
+
+    const strokeStyle = edge.dash ? 'stroke-dasharray="6,4"' : '';
+    const color = edge.dash ? '#333' : '#444';
+
+    html += `<path d="M${startX},${startY} Q${midX + perpX * 0.3},${midY + perpY * 0.3} ${endX},${endY}" fill="none" stroke="${color}" stroke-width="1.5" ${strokeStyle} marker-end="url(#arrow)"/>`;
+
+    if (edge.label) {
+      html += `<text x="${midX + perpX * 0.15}" y="${midY + perpY * 0.15 - 6}" text-anchor="middle" fill="#666" font-size="10" font-family="system-ui">${edge.label}</text>`;
+    }
+  });
+
+  // Nodes
+  view.nodes.forEach(node => {
+    const c = getNodeCenter(node);
+    const w = 140, h = 56, r = 10;
+
+    html += `<g class="node" style="cursor:pointer" onclick="showInfo('${node.id}')">`;
+
+    // Glow
+    html += `<rect x="${c.x - w/2}" y="${c.y - h/2}" width="${w}" height="${h}" rx="${r}" fill="${node.color}11" stroke="${node.color}33" stroke-width="1"/>`;
+
+    // Background
+    html += `<rect x="${c.x - w/2}" y="${c.y - h/2}" width="${w}" height="${h}" rx="${r}" fill="rgba(18,18,28,0.9)" stroke="${node.color}66" stroke-width="1.5"/>`;
+
+    // Color accent bar
+    html += `<rect x="${c.x - w/2}" y="${c.y - h/2}" width="4" height="${h}" rx="2" fill="${node.color}"/>`;
+
+    // Icon circle
+    html += `<circle cx="${c.x - w/2 + 24}" cy="${c.y}" r="14" fill="${node.color}22" stroke="${node.color}44" stroke-width="1"/>`;
+    html += `<svg x="${c.x - w/2 + 16}" y="${c.y - 8}" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${node.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${node.icon}"/></svg>`;
+
+    // Label
+    html += `<text x="${c.x - w/2 + 46}" y="${c.y - 5}" fill="#fff" font-size="12" font-weight="600" font-family="system-ui">${node.label}</text>`;
+    html += `<text x="${c.x - w/2 + 46}" y="${c.y + 10}" fill="#888" font-size="10" font-family="system-ui">${node.sub}</text>`;
+
+    html += `</g>`;
+  });
+
+  svg.innerHTML = html;
+}
+
+function showInfo(nodeId) {
+  const node = views[currentView].nodes.find(n => n.id === nodeId);
+  if (!node || !node.info) return;
+
+  infoPanel.querySelector('h2').textContent = node.info.title;
+  infoPanel.querySelector('p').textContent = node.info.desc;
+  infoPanel.querySelector('.tech').innerHTML = node.info.tech.map(t => `<span>${t}</span>`).join('');
+}
+
+render();
+</script>
+</body>
+</html>

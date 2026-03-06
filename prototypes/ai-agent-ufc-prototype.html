@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Agent UFC - Fight Prototype</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; overflow: hidden; }
+  .app { width: 100vw; height: 100vh; display: flex; flex-direction: column; }
+
+  /* Top Bar */
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 10px 24px; background: rgba(15,15,25,0.95); border-bottom: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; }
+  .topbar .brand { font-size: 16px; font-weight: 700; color: #fff; }
+  .topbar .brand span { color: #f43f5e; }
+  .topbar .match-info { font-size: 12px; color: #888; display: flex; gap: 16px; }
+  .topbar .match-info .live { color: #f43f5e; font-weight: 600; display: flex; align-items: center; gap: 5px; }
+  .topbar .match-info .live::before { content: ''; width: 7px; height: 7px; background: #f43f5e; border-radius: 50%; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* Fighter HUD */
+  .hud { display: flex; justify-content: space-between; align-items: stretch; padding: 12px 24px; gap: 20px; flex-shrink: 0; }
+  .fighter-card { flex: 1; display: flex; gap: 14px; padding: 14px 18px; background: rgba(20,20,32,0.8); border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); }
+  .fighter-card.right { flex-direction: row-reverse; text-align: right; }
+  .fighter-card .avatar { width: 52px; height: 52px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+  .fighter-card .stats { flex: 1; }
+  .fighter-card .name { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 2px; }
+  .fighter-card .style { font-size: 11px; color: #888; margin-bottom: 8px; }
+  .stat-bar { margin-bottom: 5px; }
+  .stat-bar .label { display: flex; justify-content: space-between; font-size: 10px; color: #888; margin-bottom: 2px; }
+  .stat-bar .bar { height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+  .stat-bar .fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+  .fill-hp { background: linear-gradient(90deg, #ef4444, #22c55e); }
+  .fill-stamina { background: linear-gradient(90deg, #f59e0b, #3b82f6); }
+  .fill-guard { background: #8b5cf6; }
+
+  .round-display { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 16px; flex-shrink: 0; }
+  .round-num { font-size: 28px; font-weight: 800; color: #fff; line-height: 1; }
+  .round-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+  .turn-count { font-size: 11px; color: #f43f5e; margin-top: 4px; }
+
+  /* Arena */
+  .arena-wrapper { flex: 1; position: relative; overflow: hidden; }
+  .arena { width: 100%; height: 100%; position: relative; }
+  canvas { width: 100%; height: 100%; display: block; }
+
+  /* Action Feed */
+  .feed { position: absolute; bottom: 10px; left: 16px; right: 16px; display: flex; gap: 10px; }
+  .feed-left, .feed-right { flex: 1; }
+  .feed-center { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .feed-event { padding: 6px 12px; background: rgba(15,15,25,0.85); border-radius: 8px; font-size: 11px; border: 1px solid rgba(255,255,255,0.05); backdrop-filter: blur(8px); animation: fadeIn 0.3s ease; margin-bottom: 4px; }
+  .feed-event.hit { border-left: 3px solid #f43f5e; }
+  .feed-event.miss { border-left: 3px solid #666; }
+  .feed-event.guard { border-left: 3px solid #8b5cf6; }
+  .feed-event.special { border-left: 3px solid #f59e0b; }
+  .feed-event.ko { border-left: 3px solid #ef4444; font-weight: 700; color: #fff; font-size: 13px; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Commentary */
+  .commentary { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(15,15,25,0.9); border: 1px solid rgba(244,63,94,0.3); border-radius: 10px; padding: 8px 20px; font-size: 13px; color: #fff; font-weight: 500; backdrop-filter: blur(8px); white-space: nowrap; animation: fadeIn 0.4s ease; z-index: 5; }
+
+  /* Controls */
+  .controls { display: flex; justify-content: center; gap: 10px; padding: 12px; background: rgba(15,15,25,0.95); border-top: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; }
+  .btn { padding: 8px 24px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .btn-primary { background: #f43f5e; color: #fff; }
+  .btn-primary:hover { background: #e11d48; }
+  .btn-secondary { background: rgba(255,255,255,0.08); color: #ccc; }
+  .btn-secondary:hover { background: rgba(255,255,255,0.12); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .speed-label { display: flex; align-items: center; font-size: 12px; color: #888; gap: 6px; }
+
+  /* Scorecards */
+  .scorecards { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(10,10,18,0.95); border: 1px solid rgba(244,63,94,0.4); border-radius: 16px; padding: 28px 36px; text-align: center; z-index: 20; backdrop-filter: blur(12px); display: none; min-width: 340px; }
+  .scorecards h2 { font-size: 22px; color: #fff; margin-bottom: 4px; }
+  .scorecards .method { font-size: 13px; color: #f43f5e; margin-bottom: 16px; }
+  .scorecards .stats-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px 16px; font-size: 12px; margin-top: 12px; }
+  .scorecards .stats-grid .label { color: #888; }
+  .scorecards .stats-grid .val { color: #fff; font-weight: 600; }
+  .scorecards .stats-grid .val.winner { color: #22c55e; }
+
+  /* Setup screen */
+  .setup-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(5,5,10,0.97); z-index: 50; display: flex; align-items: center; justify-content: center; }
+  .setup-box { background: rgba(20,20,32,0.95); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 32px 40px; max-width: 700px; width: 100%; }
+  .setup-box h1 { font-size: 24px; font-weight: 800; color: #fff; margin-bottom: 4px; }
+  .setup-box h1 span { color: #f43f5e; }
+  .setup-box .sub { font-size: 13px; color: #888; margin-bottom: 24px; }
+  .fighters-pick { display: flex; gap: 16px; margin-bottom: 20px; }
+  .pick-side { flex: 1; }
+  .pick-side h3 { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .style-option { padding: 10px 14px; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; margin-bottom: 6px; cursor: pointer; transition: all 0.2s; display: flex; justify-content: space-between; align-items: center; }
+  .style-option:hover { border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.03); }
+  .style-option.selected { border-color: #f43f5e; background: rgba(244,63,94,0.08); }
+  .style-option .sname { font-size: 13px; font-weight: 600; color: #fff; }
+  .style-option .sdesc { font-size: 11px; color: #888; }
+  .style-option .emoji { font-size: 20px; }
+  .vs-divider { display: flex; align-items: center; justify-content: center; padding: 0 8px; font-size: 20px; font-weight: 900; color: #f43f5e; }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <!-- Setup -->
+  <div class="setup-overlay" id="setup">
+    <div class="setup-box">
+      <h1>AI Agent <span>UFC</span></h1>
+      <div class="sub">Pick two AI fighter styles and watch them battle. This is a working prototype of the turn-based match engine.</div>
+      <div class="fighters-pick">
+        <div class="pick-side" id="pickA">
+          <h3>Red Corner</h3>
+        </div>
+        <div class="vs-divider">VS</div>
+        <div class="pick-side" id="pickB">
+          <h3>Blue Corner</h3>
+        </div>
+      </div>
+      <button class="btn btn-primary" style="width:100%;padding:12px;" onclick="startFight()">Start Fight</button>
+    </div>
+  </div>
+
+  <!-- Main UI (hidden until fight starts) -->
+  <div id="mainUI" style="display:none; flex-direction:column; height:100vh;">
+    <div class="topbar">
+      <div class="brand">AI Agent <span>UFC</span></div>
+      <div class="match-info">
+        <div class="live">LIVE</div>
+        <div id="divisionLabel">Lightweight Division</div>
+        <div id="engineVersion">Engine v1.0</div>
+      </div>
+    </div>
+
+    <div class="hud">
+      <div class="fighter-card" id="cardA">
+        <div class="avatar" id="avatarA" style="background:rgba(239,68,68,0.15); border:2px solid rgba(239,68,68,0.3);"></div>
+        <div class="stats">
+          <div class="name" id="nameA"></div>
+          <div class="style" id="styleA"></div>
+          <div class="stat-bar"><div class="label"><span>HP</span><span id="hpValA"></span></div><div class="bar"><div class="fill fill-hp" id="hpBarA"></div></div></div>
+          <div class="stat-bar"><div class="label"><span>Stamina</span><span id="stamValA"></span></div><div class="bar"><div class="fill fill-stamina" id="stamBarA"></div></div></div>
+          <div class="stat-bar"><div class="label"><span>Guard</span><span id="guardValA"></span></div><div class="bar"><div class="fill fill-guard" id="guardBarA"></div></div></div>
+        </div>
+      </div>
+      <div class="round-display">
+        <div class="round-label">Round</div>
+        <div class="round-num" id="roundNum">1</div>
+        <div class="turn-count" id="turnCount">Turn 0</div>
+      </div>
+      <div class="fighter-card right" id="cardB">
+        <div class="avatar" id="avatarB" style="background:rgba(59,130,246,0.15); border:2px solid rgba(59,130,246,0.3);"></div>
+        <div class="stats">
+          <div class="name" id="nameB"></div>
+          <div class="style" id="styleB"></div>
+          <div class="stat-bar"><div class="label"><span>HP</span><span id="hpValB"></span></div><div class="bar"><div class="fill fill-hp" id="hpBarB"></div></div></div>
+          <div class="stat-bar"><div class="label"><span>Stamina</span><span id="stamValB"></span></div><div class="bar"><div class="fill fill-stamina" id="stamBarB"></div></div></div>
+          <div class="stat-bar"><div class="label"><span>Guard</span><span id="guardValB"></span></div><div class="bar"><div class="fill fill-guard" id="guardBarB"></div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arena-wrapper">
+      <canvas id="arenaCanvas"></canvas>
+      <div class="commentary" id="commentary" style="display:none;"></div>
+      <div class="feed" id="feed">
+        <div class="feed-left" id="feedA"></div>
+        <div class="feed-center"></div>
+        <div class="feed-right" id="feedB" style="text-align:right;"></div>
+      </div>
+      <div class="scorecards" id="scorecards">
+        <h2 id="winnerName"></h2>
+        <div class="method" id="winMethod"></div>
+        <div class="stats-grid" id="fightStats"></div>
+        <button class="btn btn-primary" style="margin-top:18px;width:100%;" onclick="resetFight()">New Fight</button>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn btn-secondary" onclick="resetFight()">New Fight</button>
+      <button class="btn btn-primary" id="pauseBtn" onclick="togglePause()">Pause</button>
+      <div class="speed-label">
+        Speed:
+        <button class="btn btn-secondary" onclick="setSpeed(0.5)" id="sp05">0.5x</button>
+        <button class="btn btn-secondary" onclick="setSpeed(1)" id="sp1" style="background:rgba(244,63,94,0.2);color:#f43f5e;">1x</button>
+        <button class="btn btn-secondary" onclick="setSpeed(2)" id="sp2">2x</button>
+        <button class="btn btn-secondary" onclick="setSpeed(4)" id="sp4">4x</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================
+// AI AGENT UFC - DETERMINISTIC FIGHT ENGINE
+// ============================================
+
+// --- Seeded RNG (Mulberry32) ---
+function mulberry32(a) {
+  return function() {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// --- Style definitions ---
+const STYLES = {
+  aggro: {
+    name: 'Iron Fist', emoji: '👊', style: 'Aggro',
+    desc: 'All-out offense, heavy strikes',
+    color: '#ef4444',
+    weights: { strike: 0.55, hook: 0.2, kick: 0.1, guard: 0.05, special: 0.1 },
+    power: 1.15, defense: 0.8, speed: 1.0, staminaRate: 1.1
+  },
+  counter: {
+    name: 'The Ghost', emoji: '👻', style: 'Counter',
+    desc: 'Wait and punish mistakes',
+    color: '#3b82f6',
+    weights: { strike: 0.15, hook: 0.15, kick: 0.1, guard: 0.4, special: 0.2 },
+    power: 1.05, defense: 1.2, speed: 1.1, staminaRate: 0.85
+  },
+  grappler: {
+    name: 'The Anaconda', emoji: '🐍', style: 'Grappler',
+    desc: 'Close range, wear opponents down',
+    color: '#10b981',
+    weights: { strike: 0.2, hook: 0.25, kick: 0.05, guard: 0.25, special: 0.25 },
+    power: 0.95, defense: 1.1, speed: 0.9, staminaRate: 0.9
+  },
+  zoner: {
+    name: 'Long Range', emoji: '🦅', style: 'Zoner',
+    desc: 'Keep distance, use kicks and timing',
+    color: '#f59e0b',
+    weights: { strike: 0.1, hook: 0.1, kick: 0.35, guard: 0.25, special: 0.2 },
+    power: 1.0, defense: 1.0, speed: 1.15, staminaRate: 0.95
+  },
+  adaptive: {
+    name: 'The Professor', emoji: '🧠', style: 'Adaptive',
+    desc: 'Reads the fight, adjusts tactics',
+    color: '#8b5cf6',
+    weights: { strike: 0.2, hook: 0.2, kick: 0.2, guard: 0.2, special: 0.2 },
+    power: 1.0, defense: 1.0, speed: 1.0, staminaRate: 1.0
+  },
+  brawler: {
+    name: 'Bone Crusher', emoji: '💀', style: 'Brawler',
+    desc: 'Reckless power, high risk high reward',
+    color: '#ec4899',
+    weights: { strike: 0.3, hook: 0.35, kick: 0.05, guard: 0.05, special: 0.25 },
+    power: 1.3, defense: 0.65, speed: 0.85, staminaRate: 1.25
+  }
+};
+
+// --- Game Constants ---
+const MAX_HP = 100;
+const MAX_STAMINA = 100;
+const MAX_GUARD = 100;
+const TURNS_PER_ROUND = 40;
+const MAX_ROUNDS = 3;
+const STAMINA_REGEN = 3;
+const GUARD_REGEN = 5;
+const GUARD_BLOCK_REDUCTION = 0.6;
+
+const ACTIONS = {
+  strike: { damage: [8, 14], stamina: 8, accuracy: 0.75, name: 'Jab' },
+  hook: { damage: [14, 22], stamina: 14, accuracy: 0.6, name: 'Hook' },
+  kick: { damage: [12, 18], stamina: 12, accuracy: 0.65, name: 'Kick' },
+  guard: { damage: [0, 0], stamina: -15, accuracy: 1, name: 'Guard' },
+  special: { damage: [22, 35], stamina: 25, accuracy: 0.45, name: 'Special' },
+};
+
+// --- Fight State ---
+let matchState = null;
+let turnInterval = null;
+let paused = false;
+let speed = 1;
+let seed = Date.now();
+let rng;
+let selA = 'aggro', selB = 'counter';
+let feedEventsA = [], feedEventsB = [];
+let commentary = '';
+let totalDmgA = 0, totalDmgB = 0, hitsA = 0, hitsB = 0, guardsA = 0, guardsB = 0;
+
+// --- Setup Screen ---
+function renderSetup() {
+  const pickA = document.getElementById('pickA');
+  const pickB = document.getElementById('pickB');
+  let htmlA = '<h3>Red Corner</h3>', htmlB = '<h3>Blue Corner</h3>';
+  Object.entries(STYLES).forEach(([key, s]) => {
+    htmlA += `<div class="style-option ${selA === key ? 'selected' : ''}" onclick="selectFighter('A','${key}')">
+      <div><div class="sname">${s.name}</div><div class="sdesc">${s.style} — ${s.desc}</div></div>
+      <div class="emoji">${s.emoji}</div>
+    </div>`;
+    htmlB += `<div class="style-option ${selB === key ? 'selected' : ''}" onclick="selectFighter('B','${key}')">
+      <div><div class="sname">${s.name}</div><div class="sdesc">${s.style} — ${s.desc}</div></div>
+      <div class="emoji">${s.emoji}</div>
+    </div>`;
+  });
+  pickA.innerHTML = htmlA;
+  pickB.innerHTML = htmlB;
+}
+
+function selectFighter(side, key) {
+  if (side === 'A') selA = key; else selB = key;
+  renderSetup();
+}
+
+// --- Engine ---
+function createFighter(styleKey, side) {
+  const s = STYLES[styleKey];
+  return {
+    key: styleKey, side, name: s.name, style: s.style, emoji: s.emoji, color: s.color,
+    hp: MAX_HP, stamina: MAX_STAMINA, guard: MAX_GUARD, position: side === 'A' ? 0.3 : 0.7,
+    power: s.power, defense: s.defense, speed: s.speed, staminaRate: s.staminaRate,
+    weights: { ...s.weights }, cooldowns: { special: 0 }, lastAction: null, combo: 0,
+    knockdowns: 0, balance: 100
+  };
+}
+
+function decideAction(fighter, opponent, rng) {
+  // Adaptive: shift weights based on opponent behavior
+  let weights = { ...fighter.weights };
+
+  // If low stamina, guard more
+  if (fighter.stamina < 25) {
+    weights.guard += 0.3;
+    weights.strike -= 0.1;
+    weights.hook -= 0.1;
+    weights.special -= 0.1;
+  }
+
+  // If opponent is low HP, get aggressive
+  if (opponent.hp < 30) {
+    weights.hook += 0.15;
+    weights.special += 0.1;
+    weights.guard -= 0.15;
+  }
+
+  // Counter style: if opponent just attacked, counter
+  if (fighter.style === 'Counter' && opponent.lastAction && opponent.lastAction !== 'guard') {
+    weights.hook += 0.25;
+    weights.strike += 0.15;
+    weights.guard -= 0.2;
+  }
+
+  // Adaptive: mirror opponent weaknesses
+  if (fighter.style === 'Adaptive') {
+    if (opponent.guard < 40) { weights.hook += 0.15; weights.kick += 0.1; }
+    if (opponent.stamina < 30) { weights.special += 0.15; }
+  }
+
+  // Cooldown check
+  if (fighter.cooldowns.special > 0) {
+    weights.guard += weights.special;
+    weights.special = 0;
+  }
+
+  // Can't afford stamina
+  Object.keys(weights).forEach(a => {
+    if (ACTIONS[a].stamina > 0 && fighter.stamina < ACTIONS[a].stamina * fighter.staminaRate) {
+      weights.guard += weights[a] * 0.5;
+      weights[a] *= 0.2;
+    }
+  });
+
+  // Normalize and pick
+  const total = Object.values(weights).reduce((s, v) => s + v, 0);
+  let roll = rng() * total;
+  for (const [action, w] of Object.entries(weights)) {
+    roll -= w;
+    if (roll <= 0) return action;
+  }
+  return 'guard';
+}
+
+function resolveTurn() {
+  if (!matchState || matchState.finished) return;
+
+  const { a, b } = matchState;
+  const actionA = decideAction(a, b, rng);
+  const actionB = decideAction(b, a, rng);
+
+  a.lastAction = actionA;
+  b.lastAction = actionB;
+
+  // Process actions
+  const resultA = processAction(a, b, actionA, rng);
+  const resultB = processAction(b, a, actionB, rng);
+
+  // Apply damage
+  if (resultA.hit) {
+    let dmg = resultA.damage;
+    if (actionB === 'guard') { dmg *= (1 - GUARD_BLOCK_REDUCTION * (b.guard / MAX_GUARD)); b.guard = Math.max(0, b.guard - 10); }
+    dmg *= (1 / b.defense);
+    dmg = Math.round(dmg);
+    b.hp = Math.max(0, b.hp - dmg);
+    totalDmgA += dmg;
+    hitsA++;
+    b.balance = Math.max(0, b.balance - dmg * 0.8);
+    resultA.actualDmg = dmg;
+  }
+  if (resultB.hit) {
+    let dmg = resultB.damage;
+    if (actionA === 'guard') { dmg *= (1 - GUARD_BLOCK_REDUCTION * (a.guard / MAX_GUARD)); a.guard = Math.max(0, a.guard - 10); }
+    dmg *= (1 / a.defense);
+    dmg = Math.round(dmg);
+    a.hp = Math.max(0, a.hp - dmg);
+    totalDmgB += dmg;
+    hitsB++;
+    a.balance = Math.max(0, a.balance - dmg * 0.8);
+    resultB.actualDmg = dmg;
+  }
+
+  // Stamina management
+  [a, b].forEach(f => {
+    f.stamina = Math.min(MAX_STAMINA, f.stamina + STAMINA_REGEN);
+    f.guard = Math.min(MAX_GUARD, f.guard + GUARD_REGEN);
+    f.balance = Math.min(100, f.balance + 3);
+    if (f.cooldowns.special > 0) f.cooldowns.special--;
+  });
+
+  if (actionA === 'guard') { a.stamina = Math.min(MAX_STAMINA, a.stamina + 10); guardsA++; }
+  if (actionB === 'guard') { b.stamina = Math.min(MAX_STAMINA, b.stamina + 10); guardsB++; }
+
+  // Feed events
+  addFeedEvent('A', resultA, actionA, a);
+  addFeedEvent('B', resultB, actionB, b);
+
+  // Commentary
+  generateCommentary(resultA, resultB, actionA, actionB, a, b);
+
+  matchState.turn++;
+
+  // Check round end
+  if (matchState.turn >= TURNS_PER_ROUND) {
+    matchState.round++;
+    matchState.turn = 0;
+    if (matchState.round > MAX_ROUNDS) {
+      endMatch('decision');
+      return;
+    }
+    commentary = `Round ${matchState.round} begins!`;
+  }
+
+  // Check KO
+  if (a.hp <= 0) { endMatch('ko', b); return; }
+  if (b.hp <= 0) { endMatch('ko', a); return; }
+
+  // Check knockdown → TKO
+  if (a.balance <= 0) { a.knockdowns++; a.balance = 40; if (a.knockdowns >= 3) { endMatch('tko', b); return; } }
+  if (b.balance <= 0) { b.knockdowns++; b.balance = 40; if (b.knockdowns >= 3) { endMatch('tko', a); return; } }
+
+  updateUI();
+}
+
+function processAction(attacker, defender, action, rng) {
+  const template = ACTIONS[action];
+  const staminaCost = template.stamina * attacker.staminaRate;
+
+  if (action === 'guard') {
+    attacker.stamina = Math.min(MAX_STAMINA, attacker.stamina - staminaCost);
+    return { hit: false, action, name: template.name };
+  }
+
+  attacker.stamina = Math.max(0, attacker.stamina - staminaCost);
+  if (action === 'special') attacker.cooldowns.special = 5;
+
+  const accuracy = template.accuracy * attacker.speed * (attacker.stamina / MAX_STAMINA * 0.3 + 0.7);
+  const hit = rng() < accuracy;
+
+  if (!hit) return { hit: false, action, name: template.name };
+
+  const baseDmg = template.damage[0] + rng() * (template.damage[1] - template.damage[0]);
+  const damage = baseDmg * attacker.power;
+
+  return { hit: true, action, name: template.name, damage: Math.round(damage) };
+}
+
+function addFeedEvent(side, result, action, fighter) {
+  const feed = side === 'A' ? feedEventsA : feedEventsB;
+  let cls = 'miss';
+  let text = '';
+
+  if (action === 'guard') {
+    cls = 'guard';
+    text = `🛡️ ${fighter.name} guards`;
+  } else if (result.hit) {
+    cls = action === 'special' ? 'special' : 'hit';
+    const emoji = action === 'special' ? '⚡' : action === 'hook' ? '🥊' : action === 'kick' ? '🦵' : '👊';
+    text = `${emoji} ${result.name} lands! -${result.actualDmg || result.damage} HP`;
+  } else {
+    text = `💨 ${result.name} misses`;
+  }
+
+  feed.unshift({ cls, text, turn: matchState.turn });
+  if (feed.length > 4) feed.pop();
+}
+
+const COMMENTARY_LINES = {
+  bigHit: ['{a} connects with a DEVASTATING {move}!', 'HUGE {move} from {a}! {b} is rocked!', 'What a {move} by {a}! The crowd goes wild!'],
+  doubleHit: ['Both fighters exchange blows!', 'They\'re trading in the center!', 'Simultaneous strikes! What a round!'],
+  doubleGuard: ['Both fighters playing it safe...', 'Feeling each other out here.', 'A tactical stalemate.'],
+  special: ['{a} unleashes their SPECIAL! {b} in trouble!', 'SIGNATURE MOVE from {a}!', '{a} goes for the finish!'],
+  lowHp: ['{a} is hurt! Can {b} finish it?', '{a} is on shaky legs!', 'The end might be near for {a}!'],
+  knockdown: ['DOWN GOES {a}! Knockdown!', '{a} hits the canvas!'],
+};
+
+function generateCommentary(rA, rB, actA, actB, fA, fB) {
+  const lines = [];
+  if (rA.hit && rA.actualDmg > 18) lines.push(...COMMENTARY_LINES.bigHit.map(l => l.replace('{a}', fA.name).replace('{b}', fB.name).replace('{move}', rA.name)));
+  if (rB.hit && rB.actualDmg > 18) lines.push(...COMMENTARY_LINES.bigHit.map(l => l.replace('{a}', fB.name).replace('{b}', fA.name).replace('{move}', rB.name)));
+  if (actA === 'special' && rA.hit) lines.push(...COMMENTARY_LINES.special.map(l => l.replace('{a}', fA.name).replace('{b}', fB.name)));
+  if (actB === 'special' && rB.hit) lines.push(...COMMENTARY_LINES.special.map(l => l.replace('{a}', fB.name).replace('{b}', fA.name)));
+  if (fA.hp < 25) lines.push(...COMMENTARY_LINES.lowHp.map(l => l.replace('{a}', fA.name).replace('{b}', fB.name)));
+  if (fB.hp < 25) lines.push(...COMMENTARY_LINES.lowHp.map(l => l.replace('{a}', fB.name).replace('{b}', fA.name)));
+  if (rA.hit && rB.hit) lines.push(...COMMENTARY_LINES.doubleHit);
+  if (actA === 'guard' && actB === 'guard') lines.push(...COMMENTARY_LINES.doubleGuard);
+
+  if (lines.length > 0) {
+    commentary = lines[Math.floor(rng() * lines.length)];
+  } else {
+    if (rng() < 0.85) commentary = ''; // Most turns: no commentary
+  }
+}
+
+function endMatch(method, winner) {
+  matchState.finished = true;
+  clearInterval(turnInterval);
+
+  let winnerFighter, loserFighter, methodText;
+
+  if (method === 'decision') {
+    if (totalDmgA > totalDmgB) { winnerFighter = matchState.a; loserFighter = matchState.b; }
+    else if (totalDmgB > totalDmgA) { winnerFighter = matchState.b; loserFighter = matchState.a; }
+    else { winnerFighter = matchState.a; loserFighter = matchState.b; } // tiebreak
+    methodText = `Decision (${totalDmgA > totalDmgB ? 'Unanimous' : 'Split'})`;
+  } else {
+    winnerFighter = winner;
+    loserFighter = winner === matchState.a ? matchState.b : matchState.a;
+    methodText = method === 'ko' ? `KO — Round ${matchState.round}` : `TKO — Round ${matchState.round}`;
+  }
+
+  const sc = document.getElementById('scorecards');
+  document.getElementById('winnerName').textContent = `${winnerFighter.emoji} ${winnerFighter.name} Wins!`;
+  document.getElementById('winMethod').textContent = methodText;
+
+  const wIsA = winnerFighter === matchState.a;
+
+  document.getElementById('fightStats').innerHTML = `
+    <div class="val ${wIsA ? 'winner' : ''}">${totalDmgA}</div><div class="label">Total Damage</div><div class="val ${!wIsA ? 'winner' : ''}">${totalDmgB}</div>
+    <div class="val ${wIsA ? 'winner' : ''}">${hitsA}</div><div class="label">Hits Landed</div><div class="val ${!wIsA ? 'winner' : ''}">${hitsB}</div>
+    <div class="val">${guardsA}</div><div class="label">Guards</div><div class="val">${guardsB}</div>
+    <div class="val">${matchState.a.knockdowns}</div><div class="label">Knockdowns</div><div class="val">${matchState.b.knockdowns}</div>
+    <div class="val">${matchState.a.hp}</div><div class="label">HP Remaining</div><div class="val">${matchState.b.hp}</div>
+  `;
+
+  sc.style.display = 'block';
+}
+
+// --- UI ---
+function updateUI() {
+  const { a, b } = matchState;
+
+  // Stats
+  document.getElementById('hpBarA').style.width = `${a.hp}%`;
+  document.getElementById('hpBarB').style.width = `${b.hp}%`;
+  document.getElementById('stamBarA').style.width = `${a.stamina}%`;
+  document.getElementById('stamBarB').style.width = `${b.stamina}%`;
+  document.getElementById('guardBarA').style.width = `${a.guard}%`;
+  document.getElementById('guardBarB').style.width = `${b.guard}%`;
+  document.getElementById('hpValA').textContent = Math.round(a.hp);
+  document.getElementById('hpValB').textContent = Math.round(b.hp);
+  document.getElementById('stamValA').textContent = Math.round(a.stamina);
+  document.getElementById('stamValB').textContent = Math.round(b.stamina);
+  document.getElementById('guardValA').textContent = Math.round(a.guard);
+  document.getElementById('guardValB').textContent = Math.round(b.guard);
+  document.getElementById('roundNum').textContent = matchState.round;
+  document.getElementById('turnCount').textContent = `Turn ${matchState.turn}`;
+
+  // Feed
+  const feedA = document.getElementById('feedA');
+  const feedB = document.getElementById('feedB');
+  feedA.innerHTML = feedEventsA.map(e => `<div class="feed-event ${e.cls}">${e.text}</div>`).join('');
+  feedB.innerHTML = feedEventsB.map(e => `<div class="feed-event ${e.cls}">${e.text}</div>`).join('');
+
+  // Commentary
+  const commEl = document.getElementById('commentary');
+  if (commentary) {
+    commEl.textContent = commentary;
+    commEl.style.display = 'block';
+  } else {
+    commEl.style.display = 'none';
+  }
+
+  // Canvas
+  drawArena();
+}
+
+function drawArena() {
+  const canvas = document.getElementById('arenaCanvas');
+  const ctx = canvas.getContext('2d');
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * 2;
+  canvas.height = rect.height * 2;
+  ctx.scale(2, 2);
+  const W = rect.width, H = rect.height;
+
+  // Background
+  const grad = ctx.createRadialGradient(W/2, H*0.6, 50, W/2, H*0.6, W*0.6);
+  grad.addColorStop(0, '#1a1a2e');
+  grad.addColorStop(1, '#0a0a0f');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Floor
+  ctx.fillStyle = 'rgba(255,255,255,0.02)';
+  ctx.beginPath();
+  ctx.ellipse(W/2, H*0.7, W*0.4, H*0.12, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // Ring ropes (simplified octagon)
+  ctx.strokeStyle = 'rgba(244,63,94,0.15)';
+  ctx.lineWidth = 2;
+  const cx = W/2, cy = H*0.55, rx = W*0.38, ry = H*0.3;
+  ctx.beginPath();
+  for (let i = 0; i < 8; i++) {
+    const angle = (Math.PI*2/8)*i - Math.PI/8;
+    const x = cx + Math.cos(angle)*rx;
+    const y = cy + Math.sin(angle)*ry;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+
+  if (!matchState) return;
+  const { a, b } = matchState;
+
+  // Draw fighters
+  drawFighter(ctx, a, W, H, true);
+  drawFighter(ctx, b, W, H, false);
+
+  // Draw hit effects
+  if (a.lastAction && a.lastAction !== 'guard' && feedEventsA[0] && feedEventsA[0].cls === 'hit' || feedEventsA[0] && feedEventsA[0].cls === 'special') {
+    const bx = b.position * W;
+    drawHitEffect(ctx, bx, H*0.45, a.color || '#ef4444');
+  }
+  if (b.lastAction && b.lastAction !== 'guard' && feedEventsB[0] && feedEventsB[0].cls === 'hit' || feedEventsB[0] && feedEventsB[0].cls === 'special') {
+    const ax = a.position * W;
+    drawHitEffect(ctx, ax, H*0.45, b.color || '#3b82f6');
+  }
+}
+
+function drawFighter(ctx, fighter, W, H, isA) {
+  const x = fighter.position * W;
+  const y = H * 0.48;
+  const color = fighter.color || (isA ? '#ef4444' : '#3b82f6');
+  const size = 28;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + size + 10, size * 0.7, 6, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // Body glow
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 20;
+
+  // Body
+  ctx.fillStyle = color + '33';
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, size, 0, Math.PI*2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Head
+  ctx.fillStyle = color + '55';
+  ctx.beginPath();
+  ctx.arc(x, y - size - 10, size * 0.55, 0, Math.PI*2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.shadowBlur = 0;
+
+  // Emoji
+  ctx.font = `${size * 0.8}px system-ui`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(fighter.emoji, x, y);
+
+  // Name label
+  ctx.font = 'bold 11px system-ui';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(fighter.name, x, y + size + 24);
+  ctx.font = '10px system-ui';
+  ctx.fillStyle = '#888';
+  ctx.fillText(fighter.style, x, y + size + 38);
+
+  // Guard stance indicator
+  if (fighter.lastAction === 'guard') {
+    ctx.strokeStyle = '#8b5cf688';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, size + 8, -Math.PI * 0.8, Math.PI * 0.8);
+    ctx.stroke();
+  }
+
+  // Movement toward opponent
+  if (fighter.lastAction === 'strike' || fighter.lastAction === 'hook') {
+    fighter.position += (isA ? 0.008 : -0.008);
+  } else if (fighter.lastAction === 'guard') {
+    fighter.position += (isA ? -0.003 : 0.003);
+  } else if (fighter.lastAction === 'kick') {
+    fighter.position += (isA ? -0.005 : 0.005);
+  }
+  fighter.position = Math.max(0.15, Math.min(0.85, fighter.position));
+}
+
+function drawHitEffect(ctx, x, y, color) {
+  ctx.save();
+  ctx.globalAlpha = 0.7;
+  for (let i = 0; i < 5; i++) {
+    const angle = (Math.PI * 2 / 5) * i + (matchState.turn * 0.5);
+    const len = 15 + Math.random() * 10;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(angle) * len, y + Math.sin(angle) * len);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// --- Controls ---
+function startFight() {
+  seed = Date.now();
+  rng = mulberry32(seed);
+
+  matchState = {
+    a: createFighter(selA, 'A'),
+    b: createFighter(selB, 'B'),
+    round: 1,
+    turn: 0,
+    finished: false,
+    seed: seed
+  };
+
+  feedEventsA = []; feedEventsB = [];
+  totalDmgA = 0; totalDmgB = 0; hitsA = 0; hitsB = 0; guardsA = 0; guardsB = 0;
+  commentary = `${matchState.a.name} vs ${matchState.b.name} — FIGHT!`;
+
+  // Setup UI
+  document.getElementById('setup').style.display = 'none';
+  const main = document.getElementById('mainUI');
+  main.style.display = 'flex';
+
+  document.getElementById('nameA').textContent = matchState.a.name;
+  document.getElementById('nameB').textContent = matchState.b.name;
+  document.getElementById('styleA').textContent = matchState.a.style;
+  document.getElementById('styleB').textContent = matchState.b.style;
+  document.getElementById('avatarA').textContent = matchState.a.emoji;
+  document.getElementById('avatarB').textContent = matchState.b.emoji;
+  document.getElementById('avatarA').style.borderColor = matchState.a.color + '66';
+  document.getElementById('avatarA').style.background = matchState.a.color + '15';
+  document.getElementById('avatarB').style.borderColor = matchState.b.color + '66';
+  document.getElementById('avatarB').style.background = matchState.b.color + '15';
+
+  document.getElementById('scorecards').style.display = 'none';
+
+  updateUI();
+  paused = false;
+  turnInterval = setInterval(resolveTurn, 500 / speed);
+}
+
+function togglePause() {
+  paused = !paused;
+  document.getElementById('pauseBtn').textContent = paused ? 'Resume' : 'Pause';
+  if (paused) { clearInterval(turnInterval); }
+  else { turnInterval = setInterval(resolveTurn, 500 / speed); }
+}
+
+function setSpeed(s) {
+  speed = s;
+  document.querySelectorAll('[id^="sp"]').forEach(b => { b.style.background = 'rgba(255,255,255,0.08)'; b.style.color = '#ccc'; });
+  const btn = document.getElementById('sp' + String(s).replace('.', ''));
+  if (btn) { btn.style.background = 'rgba(244,63,94,0.2)'; btn.style.color = '#f43f5e'; }
+  if (!paused && matchState && !matchState.finished) {
+    clearInterval(turnInterval);
+    turnInterval = setInterval(resolveTurn, 500 / speed);
+  }
+}
+
+function resetFight() {
+  clearInterval(turnInterval);
+  matchState = null;
+  document.getElementById('mainUI').style.display = 'none';
+  document.getElementById('setup').style.display = 'flex';
+}
+
+// Init
+renderSetup();
+</script>
+</body>
+</html>
