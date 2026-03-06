@@ -7,6 +7,7 @@
 export * from './types';
 export * from './rng';
 export * from './config';
-
-// TODO: Export engine.ts runMatch() once implemented
-// TODO: Export validator.ts once implemented
+export * from './rules';
+export * from './validator';
+export * from './engine';
+export * from './agents';
